@@ -795,11 +795,16 @@ public:
         init_type __list)
         : _M_data(__list)
     {
-        for (const auto& i : __list)
+        /// If _OptionalList is not empty then check
+        /// whether all keys are in _OptionalList
+        if constexpr (sizeof...(_OptionalList))
         {
-            if (_M_contains<_OptionalList...>(i.first) == false)
+            for (const auto& i : __list)
             {
-                assert(false && "This key is not in the OptionalList.");
+                if (_M_contains<_OptionalList...>(i.first) == false)
+                {
+                    assert(false && "This key is not in the OptionalList.");
+                }
             }
         }
     }
