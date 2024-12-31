@@ -14,6 +14,35 @@ _It is well-known that Python's `**Kwargs` is used to accept an arbitrary number
 
 </div>
 
+- Function prototypes in _**Python**_:
+    ```py
+    def func(**kwargs): ...
+    ```
+
+- Function prototypes in _**C++**_:
+    ```cpp
+    void func(Kwargs<> kwargs = {})
+    {...}
+    ```
+
+- Get values in _**Python**_:
+    ```py
+    kwargs['data']
+    ```
+
+- Get values in _**C++**_:
+    ```cpp
+    kwargs["data"].valueOr<type>()  /// `type` is the type of value to return.
+    // Or
+    kwargs["data"]->valueOr<type>()
+
+    // If "data" is not found in kwargs,
+    // the valueOr() function's argument list will be used to in-place construct a `type`,
+    // similar to std::vector::emplace_back().
+    ```
+
+- [x] Restrict key name options in the parameter list;
+
 - [x] Parameters in the argument list can be **optional** and **default**;
 
 - [x] The **order of the parameters** in the argument list is **not important**;

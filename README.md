@@ -14,6 +14,35 @@ _众所周知，Python 中的 `**Kwargs` 用于函数定义时接受任意数量
 
 </div>
 
+- Function prototypes in _**Python**_:
+    ```py
+    def func(**kwargs): ...
+    ```
+
+- Function prototypes in _**C++**_:
+    ```cpp
+    void func(Kwargs<> kwargs = {})
+    {...}
+    ```
+
+- Get values in _**Python**_:
+    ```py
+    kwargs['data']
+    ```
+
+- Get values in _**C++**_:
+    ```cpp
+    kwargs["data"].valueOr<type>()  /// `type` is the type of value to return.
+    // Or
+    kwargs["data"]->valueOr<type>()
+
+    // 如果 kwargs 中找不到 "data"，
+    // 将使用 valueOr() 函数中的参数列表原地构造一个 `type`，
+    // 类似 std::vector::emplace_back()。
+    ```
+
+- [x] 限制参数列表中的键名选项；
+
 - [x] 参数列表中的参数可以 **选填** 和 **缺省**;
 
 - [x] 参数列表中的参数 **填入顺序不重要**;
