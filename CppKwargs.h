@@ -1,3 +1,25 @@
+/**
+* Copyright 2024 Yang Huanhuan (3347484963@qq.com). All rights reserved.
+* 
+* This software is provided "as is", without warranty of any kind, express or implied.
+*/
+
+/**
+* CppKwargs.h In the cpp-kwargs (https://github.com/huanhuanonly/cpp-kwargs)
+* 
+* Created by Yang Huanhuan on December 29, 2024, 14:40:45
+* 
+* --- This file is the main header for cpp-kwargs ---
+* 
+* @brief Implement Python's kwargs in C++ and extend it.
+* 
+* @class Kwargs
+* @class KwargsKey
+* @class KwargsValue
+* 
+* @fn    operator""_opt
+*/
+
 #pragma once
 
 #ifndef CPP_KWARGS_H
@@ -8,6 +30,9 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
+#include <array>
+
 #include <stdexcept>
 
 #include <cassert>
@@ -78,14 +103,22 @@ protected:
 
     enum WorkFlags : int
     {
-        DoApplyAndCopy, /// type*   , type**
-        DoCopy,         /// type*   , type*
-        DoFree,         /// type*   , [unused]
-        DoGetTypeHash,  /// [unused], std::size_t*
+        DoApplyAndCopy,           /// type*     , type**
+        DoCopy,                   /// type*     , type*
+        DoFree,                   /// type*     , [unused]
+        DoGetTypeHash,            /// [unused]  , std::size_t*
+        DoGetValueTypeHash,       /// [unused]  , std::size_t*
+        DoGetBeginIterator,       /// this      , iterator**
+        DoIterate,                /// std::pair<this, iterator**>, value_type*
+        DoIterateAny,             /// std::pair<this, iterator**>, KwargsValue*
 
-        DoCheckInt  = 0b001'00,  /// [unused], int*
-        DoCheckReal = 0b010'00,  /// [unused], int*
-        DoCheckSign = 0b100'00   /// [unused], int*
+        DoCheckInt  = 0b001'000,  /// [unused], int*
+        DoCheckReal = 0b010'000,  /// [unused], int*
+        DoCheckSign = 0b100'000,  /// [unused], int*
+
+        DoCheckIterable  = 0b001000'000, /// [unused], int*
+        DoCheckValueType = 0b010000'000, /// [unused], int*
+        DoCheckStdArray  = 0b100000'000  /// [unused], int*
     };
 
     friend static constexpr WorkFlags operator|(WorkFlags __first, WorkFlags __second) noexcept
@@ -94,7 +127,7 @@ protected:
     template<typename _Tp>
     static void _S_manage(WorkFlags __work, void* __inData, void* __outData)
     {
-        using type = _Tp;
+        using type = std::remove_reference_t<_Tp>;
 
         switch (__work)
         {
@@ -128,6 +161,61 @@ protected:
                 break;
             }
 
+            case DoGetValueTypeHash:
+            {
+                *reinterpret_cast<std::size_t*>(__outData) = typeid(_S_valueTypeOf_t<type>).hash_code();
+                break;
+            }
+
+            case DoGetBeginIterator:
+            {
+                KwargsValue* iptr = reinterpret_cast<KwargsValue*>(__inData);
+                _S_iterator_t<type>** optr = reinterpret_cast<_S_iterator_t<type>**>(__outData);
+
+                *optr = new _S_iterator_t<type>(iptr->_M_getBeginIterator<type>());
+                break;
+            }
+
+            case DoIterate:
+            {
+                if constexpr (_S_hasValueType_v<type>)
+                {
+                    auto iptr = reinterpret_cast<std::pair<KwargsValue*, _S_iterator_t<type>**>*>(__inData);
+                    auto optr = reinterpret_cast<_S_valueTypeOf_t<type>*>(__outData);
+
+                    if (**iptr->second == iptr->first->_M_getEndIterator<type>())
+                    {
+                        delete *iptr->second;
+                        *iptr->second = nullptr;
+                    }
+                    else
+                    {
+                        *optr = ***iptr->second;
+                        ++**iptr->second;
+                    }
+                }
+                break;
+            }
+
+            case DoIterateAny:
+            {
+                auto iptr = reinterpret_cast<std::pair<KwargsValue*, _S_iterator_t<type>**>*>(__inData);
+                auto optr = reinterpret_cast<KwargsValue*>(__outData);
+
+                if (**iptr->second == iptr->first->_M_getEndIterator<type>())
+                {
+                    delete *iptr->second;
+                    *iptr->second = nullptr;
+                }
+                else
+                {
+                    *optr = ***iptr->second;
+                    ++**iptr->second;
+                }
+
+                break;
+            }
+
             default:
             {
                 int result = 0;
@@ -147,6 +235,22 @@ protected:
                     result |= DoCheckSign;
                 }
 
+                
+                if ((__work & DoCheckIterable) && _S_isIterable_v<type>)
+                {
+                    result |= DoCheckIterable;
+                }
+                
+                if ((__work & DoCheckValueType) && _S_hasValueType_v<type>)
+                {
+                    result |= DoCheckValueType;
+                }
+
+                if ((__work & DoCheckStdArray) && _S_isStdArray_v<type>)
+                {
+                    result |= DoCheckStdArray;
+                }
+
                 *reinterpret_cast<int*>(__outData) = result;
                 break;
             }
@@ -154,28 +258,123 @@ protected:
     }
 
     template<typename _Tp>
-    static constexpr inline bool use_value_flag_v =
+    static constexpr inline bool _S_useValueFlag_v =
         std::is_integral_v<_Tp> ||
         std::is_pointer_v<_Tp> ||
         std::is_floating_point_v<_Tp> &&
         sizeof(_Tp) <= sizeof(void*);
 
+    template<typename _Tp, typename = std::void_t<>>
+    struct _S_valueTypeOf
+    { using type = _Tp; };
+
+    template<typename _Tp>
+    struct _S_valueTypeOf<_Tp, std::void_t<typename _Tp::value_type>>
+    { using type =  typename _Tp::value_type; };
+
+    template<typename _Tp>
+    using _S_valueTypeOf_t = _S_valueTypeOf<_Tp>::type;
+
+
+    template<typename _Tp, typename = std::void_t<>>
+    struct _S_hasValueType : std::false_type { };
+
+    template<typename _Tp>
+    struct _S_hasValueType<_Tp, std::void_t<typename _Tp::value_type>>
+        : std::true_type { };
+
+    template<typename _Tp>
+    static constexpr inline bool _S_hasValueType_v = _S_hasValueType<_Tp>::value;
+
+
+    template<typename _Tp, std::size_t _Size>
+    static constexpr inline bool _S_isStdArray(std::array<_Tp, _Size>&&) noexcept
+    { return true; }
+
+    template<typename _Tp>
+    static constexpr inline bool _S_isStdArray(_Tp&&) noexcept
+    { return false; }
+
+    template<typename _Tp>
+    static constexpr inline bool _S_isStdArray_v = _S_isStdArray(_Tp());
+
+    
+    template<typename _Tp, typename = std::void_t<>>
+    struct _S_isIterable : std::false_type { };
+
+    template<typename _Tp>
+    struct _S_isIterable<
+        _Tp,
+        std::void_t<
+            decltype(std::declval<_Tp>().begin()),
+            decltype(std::declval<_Tp>().end())>> : std::true_type
+    { };
+
+    template<typename _Tp>
+    static constexpr inline bool _S_isIterable_v = _S_isIterable<_Tp>::value;
+
+    
+    template<typename _Tp, typename = std::void_t<>>
+    struct _S_iterator { using type = std::byte*; };
+
+    template<typename _Tp>
+    struct _S_iterator<_Tp, std::void_t<typename _Tp::iterator>>
+    { using type = typename _Tp::iterator; };
+
+    template<typename _Tp>
+    using _S_iterator_t = _S_iterator<_Tp>::type;
+
+    template<typename _Tp>
+    constexpr inline
+        typename std::enable_if_t<_S_isIterable_v<_Tp>, typename _Tp::iterator>
+            _M_getBeginIterator() const noexcept
+    { return reinterpret_cast<_Tp*>(_M_data._M_ptr)->begin(); }
+
+    template<typename _Tp>
+    constexpr inline
+        typename typename std::enable_if_t<not _S_isIterable_v<_Tp>, typename std::byte*>
+            _M_getBeginIterator() const noexcept
+    { return nullptr; }
+
+    template<typename _Tp>
+    constexpr inline
+        typename std::enable_if_t<_S_isIterable_v<_Tp>, typename _Tp::iterator>
+            _M_getEndIterator() const noexcept
+    { return reinterpret_cast<_Tp*>(_M_data._M_ptr)->end(); }
+
+    template<typename _Tp>
+    constexpr inline
+        typename typename std::enable_if_t<not _S_isIterable_v<_Tp>, typename std::byte*>
+            _M_getEndIterator() const noexcept
+    { return nullptr; }
+
 public:
+
+    constexpr KwargsValue() = default;
 
     template<typename _Tp>
     constexpr KwargsValue(const _Tp& __value) noexcept
         : _M_manager(&KwargsValue::_S_manage<_Tp>)
     {
-        if constexpr (use_value_flag_v<_Tp>)
+        using type = std::remove_reference_t<_Tp>;
+
+        if constexpr (_S_useValueFlag_v<type>)
         {
-            _M_data._M_value = *reinterpret_cast<
-                decltype(_M_data._M_value)*>(&__value);
+            _M_data._M_value = 0;
+
+            for (std::size_t i = 0; i < sizeof(type); ++i)
+            {
+                _M_data._M_bytes[i] = reinterpret_cast<const std::byte*>(&__value)[i];
+            }
 
             _M_flags = ValueFlag;
         }
         else
         {
-            _M_data._M_ptr = std::addressof(__value);
+            _M_data._M_ptr = const_cast<
+                std::remove_cv_t<
+                    std::remove_reference_t<decltype(__value)>>*>(std::addressof(__value));
+
             _M_flags = PointerFlag;
         }
 
@@ -186,11 +385,13 @@ public:
     inline KwargsValue(_Tp&& __value)
         : _M_manager(&KwargsValue::_S_manage<_Tp>)
     {
-        if constexpr (use_value_flag_v<_Tp>)
+        using type = std::remove_reference_t<_Tp>;
+
+        if constexpr (_S_useValueFlag_v<type>)
         {
             _M_data._M_value = 0;
 
-            for (std::size_t i = 0; i < sizeof(_Tp); ++i)
+            for (std::size_t i = 0; i < sizeof(type); ++i)
             {
                 _M_data._M_bytes[i] = reinterpret_cast<std::byte*>(&__value)[i];
             }
@@ -199,11 +400,26 @@ public:
         }
         else
         {
-            _M_data._M_ptr = new _Tp(std::move(__value));
-            _M_flags = AppliedFlag;
+            if constexpr (std::is_rvalue_reference_v<decltype(__value)>)
+            {
+                _M_data._M_ptr = new type(std::move(__value));
+                _M_flags = AppliedFlag;
+            }
+            else if constexpr (std::is_lvalue_reference_v<decltype(__value)>)
+            {
+                _M_data._M_ptr = const_cast<
+                std::remove_cv_t<
+                    std::remove_reference_t<decltype(__value)>>*>(std::addressof(__value));
+
+                _M_flags = PointerFlag;
+            }
+            else
+            {
+                assert(false);
+            }
         }
 
-        _M_size = sizeof(_Tp);
+        _M_size = sizeof(type);
     }
     
     template<std::size_t _Size>
@@ -233,6 +449,26 @@ public:
         return hashCode;
     }
 
+    /**
+     * @return If my type is std::vector<int>, then return
+     *         the hash code for int.
+     */
+    constexpr std::size_t valueTypeHashCode() const noexcept
+    {
+        std::size_t hashCode;
+        _M_manager(DoGetValueTypeHash, nullptr, &hashCode);
+
+        return hashCode;
+    }
+
+    constexpr bool hasValueType() const noexcept
+    {
+        int result;
+        _M_manager(DoCheckValueType, nullptr, &result);
+
+        return result;
+    }
+
     template<typename _Tp>
     constexpr bool isSameType() const noexcept
     { return typeid(_Tp).hash_code() == typeHashCode(); }
@@ -249,6 +485,22 @@ public:
     {
         int result;
         _M_manager(DoCheckReal, nullptr, &result);
+
+        return result;
+    }
+
+    constexpr bool isStdArray() const noexcept
+    {
+        int result;
+        _M_manager(DoCheckStdArray, nullptr, &result);
+
+        return result;
+    }
+
+    constexpr bool isIterable() const noexcept
+    {
+        int result;
+        _M_manager(DoCheckIterable, nullptr, &result);
 
         return result;
     }
@@ -273,12 +525,38 @@ public:
         if (typeid(std::string).hash_code() == hashCode)
         {
             return reinterpret_cast<std::string*>(_M_data._M_ptr)->c_str();
-        }
+        } else
 
         /// std::string_view -> const char*
-        else if (typeid(std::string_view).hash_code() == hashCode)
+        if (typeid(std::string_view).hash_code() == hashCode)
         {
             return reinterpret_cast<std::string_view*>(_M_data._M_ptr)->data();
+        } else
+
+        /// bool -> const char*
+        if (typeid(bool).hash_code() == hashCode)
+        {
+            return static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false";
+        } else
+
+        /// char or uchar -> const char*
+        if (typeid(signed char).hash_code() == hashCode ||
+            typeid(unsigned char).hash_code() == hashCode)
+        {
+            return &static_cast<char>(_M_data._M_bytes[0]);
+        } else
+
+        /// std::vector<char> -> const char*
+        if (typeid(std::vector<char>).hash_code() == hashCode)
+        {
+            return reinterpret_cast<std::vector<char>*>(_M_data._M_ptr)->data();
+        } else
+
+        /// std::array<char, ...> -> const char*
+        if (hashCode = valueTypeHashCode();
+            isStdArray() && (typeid(signed char).hash_code() == hashCode || typeid(unsigned char).hash_code() == hashCode))
+        {
+            return reinterpret_cast<std::array<char, 1>*>(_M_data._M_ptr)->data();
         }
 
         assert(false && "Incorrect conversion.");
@@ -321,7 +599,14 @@ public:
                 {
                     if (_M_size == sizeof(char))
                     {
-                        return std::string(1, static_cast<char>(_M_data._M_bytes[0]));
+                        if (typeid(signed char).hash_code() == hashCode || typeid(unsigned char).hash_code() == hashCode)
+                        {
+                            return std::string(1, static_cast<char>(_M_data._M_bytes[0]));
+                        }
+                        else // if (typeid(bool).hash_code() == hashCode)
+                        {
+                            return std::string(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
+                        }
                     }
 
                     if (is & DoCheckSign)
@@ -376,11 +661,18 @@ public:
         {
             std::string* ptr = reinterpret_cast<std::string*>(_M_data._M_ptr);
             return std::string_view(ptr->data(), ptr->size());
-        }
+        } else
+
         /// const char* -> std::string_view
-        else if (_M_flags == StringLiteralFlag)
+        if (_M_flags == StringLiteralFlag)
         {
             return std::string_view(reinterpret_cast<const char*>(_M_data._M_ptr), _M_size);
+        } else
+
+        /// bool -> std::string_view
+        if (typeid(bool).hash_code() == hashCode)
+        {
+            return std::string_view(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
         }
 
         assert(false && "Incorrect conversion.");
@@ -407,7 +699,7 @@ public:
                 return static_cast<_Tp>(reinterpret_cast<const char*>(_M_data._M_ptr)[0]);
             else
                 return '\0';
-        }
+        } else
 
         /// std::string -> char or uchar
         if (typeid(std::string).hash_code() == hashCode)
@@ -458,9 +750,17 @@ public:
         {
             if (is & DoCheckInt)
             {
+                if (typeid(bool).hash_code() == hashCode)
+                {
+                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1 : 0;
+                }
+
                 if (is & DoCheckSign)
                 {
-                    if (_M_size == sizeof(std::int16_t)) [[unlikely]]
+                    if (_M_size == sizeof(std::int8_t))
+                        return static_cast<_Tp>(*reinterpret_cast<const std::int8_t*>(&_M_data._M_value));
+
+                    else if (_M_size == sizeof(std::int16_t)) [[unlikely]]
                         return static_cast<_Tp>(*reinterpret_cast<const std::int16_t*>(&_M_data._M_value));
 
                     else if (_M_size == sizeof(std::int32_t)) [[likely]]
@@ -578,9 +878,17 @@ public:
         {
             if (is & DoCheckInt)
             {
+                if (typeid(bool).hash_code() == hashCode)
+                {
+                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1 : 0;
+                }
+
                 if (is & DoCheckSign)
                 {
-                    if (_M_size == sizeof(std::int16_t)) [[unlikely]]
+                    if (_M_size == sizeof(std::int8_t))
+                        return static_cast<_Tp>(*reinterpret_cast<const std::int8_t*>(&_M_data._M_value));
+
+                    else if (_M_size == sizeof(std::int16_t)) [[unlikely]]
                         return static_cast<_Tp>(*reinterpret_cast<const std::int16_t*>(&_M_data._M_value));
 
                     else if (_M_size == sizeof(std::int32_t)) [[likely]]
@@ -668,6 +976,22 @@ public:
                 std::is_same_v<std::remove_cv_t<_Tp>, std::string_view>), _Tp>
         value() const noexcept
     {
+        if constexpr (_S_hasValueType_v<_Tp>/* && _S_isIterable_v<_Tp>*/)
+        {
+            if (not isSameType<_Tp>() && hasValueType() && isIterable())
+            {
+                if (typeid(_S_valueTypeOf_t<_Tp>).hash_code() == valueTypeHashCode())
+                {
+                    return _M_iterateAndCopy<_Tp>();
+                }
+                else
+                {
+                    return _M_iterateAnyAndCopy<_Tp>();
+                }
+            }
+        }
+
+
         if (_M_flags == PointerFlag || _M_flags == AppliedFlag)
         {
             return *reinterpret_cast<_Tp*>(_M_data._M_ptr);
@@ -705,6 +1029,8 @@ public:
         _M_manager = __other._M_manager;
         _M_flags = __other._M_flags;
         _M_size = __other._M_size;
+
+        return *this;
     }
 
     inline KwargsValue& operator=(KwargsValue&& __other) noexcept
@@ -723,6 +1049,8 @@ public:
         _M_size = __other._M_size;
 
         _M_manager = __other._M_manager;
+
+        return *this;
     }
 
 protected:
@@ -735,11 +1063,130 @@ protected:
     static constexpr _Tp _S_fromStringLiteral(const char* __str) noexcept
     { return _Tp(); }
 
+    template<typename _Tp>
+    constexpr _Tp _M_iterateAndCopy() const noexcept
+    {
+        void* iterator;
+        _M_manager(DoGetBeginIterator, const_cast<void*>(reinterpret_cast<const void*>(this)), &iterator);
+
+        _Tp result{};
+        std::pair<const KwargsValue*, void**> param;
+
+        _S_valueTypeOf_t<_Tp> element;
+        _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element);
+
+
+        for (; iterator; _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element))
+        {
+            _S_insertToEnd(result, std::move(element));
+        }
+
+        return result;
+    }
+
+    template<typename _Tp>
+    constexpr _Tp _M_iterateAnyAndCopy() const noexcept
+    {
+        void* iterator;
+        _M_manager(DoGetBeginIterator, const_cast<void*>(reinterpret_cast<const void*>(this)), &iterator);
+
+        _Tp result{};
+        std::pair<const KwargsValue*, void**> param;
+
+        KwargsValue element;
+
+        _M_manager(DoIterateAny, &(param = std::make_pair(this, &iterator)), &element);
+
+        for (; iterator; _M_manager(DoIterateAny, &(param = std::make_pair(this, &iterator)), &element))
+        {
+            _S_insertToEnd(result, element.value<_S_valueTypeOf_t<_Tp>>());
+        }
+
+        return result;
+    }
+
+    
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasPushBackMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasPushBackMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().push_back(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasInsertMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasInsertMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().insert(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasPushMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasPushMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().push(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasAppendMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasAppendMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().append(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<_S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.push_back(std::forward<_ValueType>(__element)); }
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<_S_hasInsertMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.insert(std::forward<_ValueType>(__element)); }
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<_S_hasPushMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.push(std::forward<_ValueType>(__element)); }
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<_S_hasAppendMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.append(std::forward<_ValueType>(__element)); }
+
 private:
     
     union Data
     {
-        void* _M_ptr;
+        void* _M_ptr = nullptr;
         
         std::uintptr_t _M_value;
 
@@ -747,7 +1194,7 @@ private:
 
     } _M_data;
 
-    void (*_M_manager)(WorkFlags, void*, void*);
+    void (*_M_manager)(WorkFlags, void*, void*) = nullptr;
 
     enum Flags
     {
@@ -757,9 +1204,9 @@ private:
         AppliedFlag
     };
 
-    Flags _M_flags;
+    Flags _M_flags = ValueFlag;
 
-    std::uint32_t _M_size;
+    std::uint32_t _M_size = 0;
 };
 
 template<KwargsKey::value_type... _OptionalList>
