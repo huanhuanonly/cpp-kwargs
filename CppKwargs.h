@@ -540,7 +540,8 @@ public:
         } else
 
         /// char or uchar -> const char*
-        if (typeid(signed char).hash_code() == hashCode ||
+        if (typeid(char).hash_code() == hashCode ||
+            typeid(signed char).hash_code() == hashCode ||
             typeid(unsigned char).hash_code() == hashCode)
         {
             return &static_cast<char>(_M_data._M_bytes[0]);
@@ -554,7 +555,10 @@ public:
 
         /// std::array<char, ...> -> const char*
         if (hashCode = valueTypeHashCode();
-            isStdArray() && (typeid(signed char).hash_code() == hashCode || typeid(unsigned char).hash_code() == hashCode))
+            isStdArray() &&
+                (typeid(char).hash_code() == hashCode ||
+                    typeid(signed char).hash_code() == hashCode ||
+                    typeid(unsigned char).hash_code() == hashCode))
         {
             return reinterpret_cast<std::array<char, 1>*>(_M_data._M_ptr)->data();
         }
@@ -599,7 +603,9 @@ public:
                 {
                     if (_M_size == sizeof(char))
                     {
-                        if (typeid(signed char).hash_code() == hashCode || typeid(unsigned char).hash_code() == hashCode)
+                        if (typeid(char).hash_code() == hashCode ||
+                            typeid(signed char).hash_code() == hashCode ||
+                            typeid(unsigned char).hash_code() == hashCode)
                         {
                             return std::string(1, static_cast<char>(_M_data._M_bytes[0]));
                         }
@@ -673,6 +679,14 @@ public:
         if (typeid(bool).hash_code() == hashCode)
         {
             return std::string_view(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
+        } else
+
+        /// char or uchar -> std::string_view
+        if (typeid(char).hash_code() == hashCode ||
+            typeid(signed char).hash_code() == hashCode ||
+            typeid(unsigned char).hash_code() == hashCode)
+        {
+            return std::string_view(reinterpret_cast<const char*>(&_M_data._M_bytes[0]), 1);
         }
 
         assert(false && "Incorrect conversion.");
