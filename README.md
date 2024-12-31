@@ -180,7 +180,7 @@ class KwargsValue {...}
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`。
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar`（取首字符，空则返回 `\0`）。
 - `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view`（`true` or `false`）.
-- 可迭代的容器（拥有 `.begin()`、`.end()` 和 _前向迭代器_）$\longrightarrow$ 可插入的容器（拥有 `.push_back()` / `.insert()` / `.push()` 或 `.append()`）。
+- 可迭代的容器（拥有 `.begin()`、`.end()` 和 _前向迭代器_） $\longrightarrow$ 可插入的容器（拥有 `.push_back()` / `.insert()` / `.push()` 或 `.append()`）。
 
 > [!NOTE]
 > 两个容器必须都要包含 `::value_type` 类型，值类型不需要一致，不一致时将按照以上规则进行转换。
