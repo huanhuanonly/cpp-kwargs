@@ -122,6 +122,17 @@ static void _test_different_container__different_value_type(Kwargs<"set"_opt> kw
     }
 }
 
+template<typename... _Args>
+static void _test_args_general(_Args&&... __args)
+{
+    _Test_Begin_
+
+    Args args(__args...);
+    std::cout << args[0].value<int>() << '\n';
+    std::cout << args[1].value<char>() << '\n';
+    std::cout << args[-1].value<std::string_view>() << '\n';
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -148,6 +159,8 @@ int main(void)
     _test_different_container__same_value_type({ { "set", std::vector<int>{ 1, 4, 3, 3, 2, 2, 3 } } });
 
     _test_different_container__different_value_type({ { "set", std::vector<int>{ 1, 4, 3, 3, 2, 2, 3 } } });
+
+    _test_args_general(65, 98, std::string("c"));
 
     return 0;
 }
