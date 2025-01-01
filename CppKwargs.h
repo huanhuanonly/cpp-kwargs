@@ -544,7 +544,7 @@ public:
             typeid(signed char).hash_code() == hashCode ||
             typeid(unsigned char).hash_code() == hashCode)
         {
-            return &static_cast<char>(_M_data._M_bytes[0]);
+            return reinterpret_cast<const char*>(&_M_data._M_bytes[0]);
         } else
 
         /// std::vector<char> -> const char*
@@ -665,7 +665,7 @@ public:
         /// std::string -> std::string_view
         if (typeid(std::string).hash_code() == hashCode)
         {
-            std::string* ptr = reinterpret_cast<std::string*>(_M_data._M_ptr);
+            const std::string* ptr = reinterpret_cast<const std::string*>(_M_data._M_ptr);
             return std::string_view(ptr->data(), ptr->size());
         } else
 
@@ -1208,7 +1208,7 @@ private:
 
     } _M_data;
 
-    void (*_M_manager)(WorkFlags, void*, void*) = nullptr;
+    void (*_M_manager)(WorkFlags, void*, void*) = &_S_manage<int>;
 
     enum Flags
     {
@@ -1222,6 +1222,107 @@ private:
 
     std::uint32_t _M_size = 0;
 };
+
+
+class Args
+{
+protected:
+
+    enum WorkFlags : int
+    {
+        DoFree,    /// _M_data , [unused], [unused]
+        DoFind,    /// _M_data , [used]  , KwargsValue**
+        DoGetSize  /// [unused], [unused], std::size_t*
+    };
+
+    template<typename... _Args>
+    static void _S_manage(WorkFlags __work, void* __inData, int __index, void* __outData)
+    {
+        switch (__work)
+        {
+            case DoFree:
+            {
+                auto iptr = reinterpret_cast<std::array<KwargsValue, sizeof...(_Args)>*>(__inData);
+
+                delete iptr;
+                break;
+            }
+
+            case DoFind:
+            {
+                auto iptr = reinterpret_cast<std::array<KwargsValue, sizeof...(_Args)>*>(__inData);
+                auto optr = reinterpret_cast<KwargsValue**>(__outData);
+
+                if (__index >= 0)
+                {
+                    assert(__index < sizeof...(_Args));
+                    *optr = &(*iptr)[__index];
+                }
+                else
+                {
+                    assert(-__index <= sizeof...(_Args));
+                    *optr = &(*iptr)[sizeof...(_Args) + __index];
+                }
+
+                break;
+            }
+
+            case DoGetSize:
+            {
+                auto optr = reinterpret_cast<std::size_t*>(__outData);
+                *optr = sizeof...(_Args);
+                break;
+            }
+        }
+    }
+
+public:
+
+    constexpr Args() = default;
+
+    template<typename... _Args>
+    Args(_Args&&... __args) noexcept
+        : _M_manager(&Args::_S_manage<_Args...>)
+    {
+        _M_data = new std::array<KwargsValue, sizeof...(_Args)>{ std::forward<_Args>(__args)... };
+    }
+
+    constexpr ~Args() noexcept
+    {
+        if (_M_data)
+        {
+            _M_manager(DoFree, _M_data, 0, nullptr);
+        }
+    }
+
+    constexpr std::size_t size() const noexcept
+    {
+        std::size_t result;
+        _M_manager(DoGetSize, nullptr, 0, &result);
+        return result;
+    }
+
+    constexpr KwargsValue& operator[](int __i) noexcept
+    {
+        KwargsValue* result;
+        _M_manager(DoFind, _M_data, __i, &result);
+        return *result;
+    }
+
+    constexpr const KwargsValue& operator[](int __i) const noexcept
+    {
+        KwargsValue* result;
+        _M_manager(DoFind, _M_data, __i, &result);
+        return *result;
+    }
+
+private:
+
+    void* _M_data = nullptr;
+
+    void (*_M_manager)(WorkFlags, void*, int, void*) = &Args::_S_manage<>;
+};
+
 
 template<KwargsKey::value_type... _OptionalList>
 class Kwargs
