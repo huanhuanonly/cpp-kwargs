@@ -17,7 +17,7 @@ struct _Test
 
 #define _Test_Begin_  _Test _l_test(__func__);
 
-static void _test_general(Kwargs<"name"_opt, "data"_opt, "old"_opt, "class"_opt> __dict)
+static void _test_general(Kwargs<"name"_opt, "data"_opt, "old"_opt, "class"_opt, 2024_opt> __dict)
 {
     _Test_Begin_
 
@@ -25,6 +25,11 @@ static void _test_general(Kwargs<"name"_opt, "data"_opt, "old"_opt, "class"_opt>
     std::cout << __dict["old"_opt]->valueOr<int>() << '\n';
 
     std::cout << __dict["class"_opt]->valueOr<std::string>("EmptyClass") << '\n';
+
+    if (__dict[2024_opt].hasValue())
+    {
+        std::cout << __dict[2024_opt].valueOr<const char*>() << 2024 << '\n';
+    }
 
     auto data = __dict["data"_opt]->valueOr<std::vector<int>>();
 
@@ -133,6 +138,37 @@ static void _test_args_general(_Args&&... __args)
     std::cout << args[-1].value<std::string_view>() << '\n';
 }
 
+
+template<typename _Tp>
+struct _Test_Container_with_Multiple_insertion_methods : std::vector<_Tp>
+{
+    using std::vector<_Tp>::value_type;
+    using std::vector<_Tp>::vector;
+    
+    // void push_back(const _Tp&) = delete;
+    // void push_back(_Tp&&) = delete;
+    
+    void insert(const _Tp& __value)
+    { std::vector<_Tp>::insert(std::vector<_Tp>::end(), __value); }
+
+    void insert(_Tp&& __value)
+    { std::vector<_Tp>::insert(std::vector<_Tp>::end(), std::forward<_Tp>(__value)); }
+};
+
+static void _test_container_with_multiple_insertion_methods(Kwargs<> kwargs = { })
+{
+    auto data_int = kwargs["data_int"_opt].valueOr<_Test_Container_with_Multiple_insertion_methods<int>>();
+    auto data_float = kwargs["data_float"_opt].valueOr<_Test_Container_with_Multiple_insertion_methods<float>>();
+
+    for (const auto& i : data_int)
+        std::cout << i <<' ';
+
+    std::cout.put('\n');
+
+    for (const auto& i : data_float)
+        std::cout << i << ' ';
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -148,6 +184,9 @@ int main(void)
     const int param_int = 996;
     _test_general({ {"name"_opt, param_int}, {"class"_opt, param_int} });
 
+    std::array<char, 7> array_char{ 'h', 'e', 'l', 'l', 'o', ' ', '\0' };
+    _test_general({ {2024_opt, array_char} });
+
     _test_empty();
 
     _test_print_list({ 1, 4, 3, 3, 2, 2, 3 }, { {"sep"_opt, " | "}, {"end"_opt, "."} });
@@ -161,6 +200,8 @@ int main(void)
     _test_different_container__different_value_type({ { "set", std::vector<int>{ 1, 4, 3, 3, 2, 2, 3 } } });
 
     _test_args_general(65, 98, std::string("c"));
+
+    _test_container_with_multiple_insertion_methods({ {"data_int", std::set<int>{ 1, 3, 1, 4, 5, 2, 0 }}, {"data_float", std::set<int>{ 1, 3, 1, 4, 5, 2, 0 }} });
 
     return 0;
 }
