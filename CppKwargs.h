@@ -1170,7 +1170,9 @@ protected:
     template<
         typename _Container,
         typename _ValueType,
-        std::enable_if_t<_S_hasInsertMFunction<_Container, _ValueType>::value, int> = 0>
+        std::enable_if_t<
+            _S_hasInsertMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
     static constexpr inline
         void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
     { __container.insert(std::forward<_ValueType>(__element)); }
@@ -1178,7 +1180,10 @@ protected:
     template<
         typename _Container,
         typename _ValueType,
-        std::enable_if_t<_S_hasPushMFunction<_Container, _ValueType>::value, int> = 0>
+        std::enable_if_t<
+            _S_hasPushMFunction<_Container, _ValueType>::value &&
+        not _S_hasInsertMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
     static constexpr inline
         void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
     { __container.push(std::forward<_ValueType>(__element)); }
@@ -1186,7 +1191,11 @@ protected:
     template<
         typename _Container,
         typename _ValueType,
-        std::enable_if_t<_S_hasAppendMFunction<_Container, _ValueType>::value, int> = 0>
+        std::enable_if_t<
+            _S_hasAppendMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushMFunction<_Container, _ValueType>::value &&
+        not _S_hasInsertMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
     static constexpr inline
         void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
     { __container.append(std::forward<_ValueType>(__element)); }
