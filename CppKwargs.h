@@ -287,16 +287,11 @@ protected:
     static constexpr inline bool _S_hasValueType_v = _S_hasValueType<_Tp>::value;
 
 
-    template<typename _Tp, std::size_t _Size>
-    static constexpr inline bool _S_isStdArray(std::array<_Tp, _Size>&&) noexcept
-    { return true; }
-
     template<typename _Tp>
-    static constexpr inline bool _S_isStdArray(_Tp&&) noexcept
-    { return false; }
-
-    template<typename _Tp>
-    static constexpr inline bool _S_isStdArray_v = _S_isStdArray(_Tp());
+    static constexpr inline bool _S_isStdArray_v =
+        std::is_same_v<
+            _Tp, std::array<_S_valueTypeOf_t<_Tp>,
+            sizeof(_Tp) / sizeof(_S_valueTypeOf_t<_Tp>)>>;
 
     
     template<typename _Tp, typename = std::void_t<>>
