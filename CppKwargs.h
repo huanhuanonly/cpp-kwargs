@@ -59,7 +59,7 @@ public:
         { pushBack(__str[i]); }
     }
 
-    constexpr KwargsKey(value_type __option) noexcept
+    constexpr explicit KwargsKey(value_type __option) noexcept
         : _M_key(__option)
     { }
 
@@ -76,12 +76,15 @@ public:
     static constexpr value_type base = 0X1C1ULL;
     static constexpr value_type mod  = 0X91F5BCB8BB0243ULL;
 
+    [[nodiscard]]
     constexpr operator value_type() const noexcept
     { return _M_key; }
 
+    [[nodiscard]]
     constexpr bool operator==(KwargsKey __other) const noexcept
     { return _M_key == __other._M_key; }
 
+    [[nodiscard]]
     constexpr bool operator<(KwargsKey __other) const noexcept
     { return _M_key < __other._M_key; }
 
@@ -90,15 +93,20 @@ private:
     value_type _M_key = 0;
 };
 
+
+[[nodiscard]]
 constexpr KwargsKey operator""_opt(const char* const __str, std::size_t __size) noexcept
 { return KwargsKey(__str, __size); }
 
 template<char... _String>
+[[nodiscard]]
 constexpr KwargsKey operator""_opt() noexcept
 { KwargsKey result; return result.pushBack(_String...), result; }
 
+[[nodiscard]]
 constexpr KwargsKey operator""_opt(char __ch) noexcept
 { KwargsKey result; return result.pushBack(__ch), result; }
+
 
 class KwargsValue
 {
@@ -124,6 +132,7 @@ protected:
         DoCheckStdArray  = 0b100000'000  /// [unused], int*
     };
 
+    [[nodiscard]]
     friend static constexpr WorkFlags operator|(WorkFlags __first, WorkFlags __second) noexcept
     { return static_cast<WorkFlags>(static_cast<int>(__first) | static_cast<int>(__second)); }
 
@@ -323,25 +332,25 @@ protected:
     using _S_iterator_t = _S_iterator<_Tp>::type;
 
     template<typename _Tp>
-    constexpr inline
+    constexpr inline [[nodiscard]]
         typename std::enable_if_t<_S_isIterable_v<_Tp>, typename _Tp::iterator>
             _M_getBeginIterator() const noexcept
     { return reinterpret_cast<_Tp*>(_M_data._M_ptr)->begin(); }
 
     template<typename _Tp>
-    constexpr inline
+    constexpr inline [[nodiscard]]
         typename typename std::enable_if_t<not _S_isIterable_v<_Tp>, typename std::byte*>
             _M_getBeginIterator() const noexcept
     { return nullptr; }
 
     template<typename _Tp>
-    constexpr inline
+    constexpr inline [[nodiscard]]
         typename std::enable_if_t<_S_isIterable_v<_Tp>, typename _Tp::iterator>
             _M_getEndIterator() const noexcept
     { return reinterpret_cast<_Tp*>(_M_data._M_ptr)->end(); }
 
     template<typename _Tp>
-    constexpr inline
+    constexpr inline [[nodiscard]]
         typename typename std::enable_if_t<not _S_isIterable_v<_Tp>, typename std::byte*>
             _M_getEndIterator() const noexcept
     { return nullptr; }
@@ -439,6 +448,7 @@ public:
     }
 
 
+    [[nodiscard]]
     constexpr std::size_t typeHashCode() const noexcept
     {
         std::size_t hashCode;
@@ -451,6 +461,7 @@ public:
      * @return If my type is std::vector<int>, then return
      *         the hash code for int.
      */
+    [[nodiscard]]
     constexpr std::size_t valueTypeHashCode() const noexcept
     {
         std::size_t hashCode;
@@ -459,6 +470,7 @@ public:
         return hashCode;
     }
 
+    [[nodiscard]]
     constexpr bool hasValueType() const noexcept
     {
         int result;
@@ -468,9 +480,11 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr bool isSameType() const noexcept
     { return typeid(_Tp).hash_code() == typeHashCode(); }
 
+    [[nodiscard]]
     constexpr bool isInteger() const noexcept
     {
         int result;
@@ -479,6 +493,7 @@ public:
         return result;
     }
 
+    [[nodiscard]]
     constexpr bool isRealNumber() const noexcept
     {
         int result;
@@ -487,6 +502,7 @@ public:
         return result;
     }
 
+    [[nodiscard]]
     constexpr bool isStdArray() const noexcept
     {
         int result;
@@ -495,6 +511,7 @@ public:
         return result;
     }
 
+    [[nodiscard]]
     constexpr bool isIterable() const noexcept
     {
         int result;
@@ -504,10 +521,12 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr operator _Tp() const noexcept
     { return value<_Tp>(); }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<
             std::is_same_v<std::remove_volatile_t<_Tp>, const char*>, _Tp>
         value() const noexcept
@@ -568,6 +587,7 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<
             std::is_same_v<std::remove_cv_t<_Tp>, std::string>, _Tp>
         value() const noexcept
@@ -649,6 +669,7 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<
             std::is_same_v<std::remove_cv_t<_Tp>, std::string_view>, _Tp>
         value() const noexcept
@@ -692,6 +713,7 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<
             std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
             std::is_same_v<std::remove_cv_t<_Tp>, unsigned char>, _Tp>
@@ -740,6 +762,7 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<
             std::is_integral_v<std::remove_cv_t<_Tp>> &&
                 !(std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
@@ -871,6 +894,7 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<std::is_floating_point_v<std::remove_cv_t<_Tp>>, _Tp>
         value() const noexcept
     {
@@ -981,6 +1005,7 @@ public:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr std::enable_if_t<
             (std::is_class_v<_Tp> || std::is_union_v<_Tp> || std::is_pointer_v<_Tp>) &&
                 !(std::is_same_v<std::remove_volatile_t<_Tp>, const char*> ||
@@ -1023,9 +1048,11 @@ public:
         return _Tp();
     }
 
+    [[nodiscard]]
     constexpr std::uint32_t size() const noexcept
     { return _M_size; }
 
+    [[nodiscard]]
     inline KwargsValue& operator=(const KwargsValue& __other)
     {
         if (_M_flags == AppliedFlag)
@@ -1045,6 +1072,7 @@ public:
         return *this;
     }
 
+    [[nodiscard]]
     inline KwargsValue& operator=(KwargsValue&& __other) noexcept
     {
         if (_M_flags == AppliedFlag)
@@ -1068,14 +1096,17 @@ public:
 protected:
 
     template<typename _Tp, typename = std::void_t<decltype(_Tp(std::declval<const char*>()))>>
+    [[nodiscard]]
     static constexpr _Tp _S_fromStringLiteral(const char* __str) noexcept
     { return _Tp(__str); }
 
     template<typename _Tp>
+    [[nodiscard]]
     static constexpr _Tp _S_fromStringLiteral(const char* __str) noexcept
     { return _Tp(); }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr _Tp _M_iterateAndCopy() const noexcept
     {
         void* iterator;
@@ -1097,6 +1128,7 @@ protected:
     }
 
     template<typename _Tp>
+    [[nodiscard]]
     constexpr _Tp _M_iterateAnyAndCopy() const noexcept
     {
         void* iterator;
@@ -1302,6 +1334,7 @@ public:
         }
     }
 
+    [[nodiscard]]
     constexpr std::size_t size() const noexcept
     {
         std::size_t result;
@@ -1309,6 +1342,7 @@ public:
         return result;
     }
 
+    [[nodiscard]]
     constexpr KwargsValue& operator[](int __i) noexcept
     {
         KwargsValue* result;
@@ -1316,6 +1350,7 @@ public:
         return *result;
     }
 
+    [[nodiscard]]
     constexpr const KwargsValue& operator[](int __i) const noexcept
     {
         KwargsValue* result;
@@ -1349,12 +1384,15 @@ public:
         { }
 
         template<typename _ValueType, typename... _Args>
+        [[nodiscard]]
         constexpr _ValueType valueOr(_Args&&... __args) const noexcept
         { return _M_that ? _M_that->value<_ValueType>() : _ValueType(std::forward<_Args>(__args)...); }
 
+        [[nodiscard]]
         constexpr bool hasValue() const noexcept
         { return _M_that; }
 
+        [[nodiscard]]
         constexpr const DataItem* operator->() const noexcept
         { return this; }
 
@@ -1394,6 +1432,7 @@ public:
         }());
     }
 
+    [[nodiscard]]
     constexpr DataItem operator[](KwargsKey __option) noexcept
     {
         for (const auto& i : _M_data)
@@ -1407,22 +1446,27 @@ public:
         return DataItem(nullptr);
     }
 
+    [[nodiscard]]
     constexpr const_iterator begin() const noexcept
     { return _M_data.begin(); }
 
+    [[nodiscard]]
     constexpr const_iterator end() const noexcept
     { return _M_data.end(); }
 
+    [[nodiscard]]
     const std::size_t size() const noexcept
     { return _M_data.size(); }
 
 protected:
 
     template<KwargsKey::value_type _Current>
+    [[nodiscard]]
     constexpr bool _M_contains(KwargsKey __option) const noexcept
     { return __option == KwargsKey(_Current); }
 
     template<KwargsKey::value_type _Current, KwargsKey::value_type _Next, KwargsKey::value_type... _Args>
+    [[nodiscard]]
     constexpr bool _M_contains(KwargsKey __option) const noexcept
     { return __option == KwargsKey(_Current) || _M_contains<_Next, _Args...>(__option); }
 
