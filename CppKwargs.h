@@ -60,11 +60,11 @@ public:
     }
 
     constexpr KwargsKey(value_type __option) noexcept
-        : _M_option(__option)
+        : _M_key(__option)
     { }
 
     constexpr void pushBack(char __c) noexcept
-    { _M_option = ((_M_option * base) % mod + __c) % mod; }
+    { _M_key = ((_M_key * base) % mod + __c) % mod; }
 
     template<typename... _Args>
     constexpr void pushBack(char __c, _Args&&... __args) noexcept
@@ -77,14 +77,17 @@ public:
     static constexpr value_type mod  = 0X91F5BCB8BB0243ULL;
 
     constexpr operator value_type() noexcept
-    { return _M_option; }
+    { return _M_key; }
 
     constexpr bool operator==(KwargsKey __other) const noexcept
-    { return _M_option == __other._M_option; }
+    { return _M_key == __other._M_key; }
+
+    constexpr bool operator<(KwargsKey __other) const noexcept
+    { return _M_key < __other._M_key; }
 
 private:
 
-    value_type _M_option = 0;
+    value_type _M_key = 0;
 };
 
 constexpr KwargsKey operator""_opt(const char* const __str, std::size_t __size) noexcept
@@ -889,7 +892,7 @@ public:
             {
                 if (typeid(bool).hash_code() == hashCode)
                 {
-                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1 : 0;
+                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1.00 : 0.00;
                 }
 
                 if (is & DoCheckSign)
@@ -1373,6 +1376,19 @@ public:
                 }
             }
         }
+
+        /// Check for duplicate keys
+        assert([&]() -> bool
+        {
+            std::set<KwargsKey> st;
+
+            for (const auto& [key, unused] : __list)
+            {
+                st.insert(key);
+            }
+
+            return st.size() == __list.size();
+        }());
     }
 
     constexpr DataItem operator[](KwargsKey __option) noexcept
