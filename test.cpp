@@ -157,6 +157,8 @@ struct _Test_Container_with_Multiple_insertion_methods : std::vector<_Tp>
 
 static void _test_container_with_multiple_insertion_methods(Kwargs<> kwargs = { })
 {
+    _Test_Begin_
+
     auto data_int = kwargs["data_int"_opt].valueOr<_Test_Container_with_Multiple_insertion_methods<int>>();
     auto data_float = kwargs["data_float"_opt].valueOr<_Test_Container_with_Multiple_insertion_methods<float>>();
 
@@ -167,6 +169,23 @@ static void _test_container_with_multiple_insertion_methods(Kwargs<> kwargs = { 
 
     for (const auto& i : data_float)
         std::cout << i << ' ';
+}
+
+static void _test_iterator(Kwargs<> kwargs = { })
+{
+    _Test_Begin_
+
+    for (auto it = kwargs.begin(); it != kwargs.end(); ++it)
+    {
+        std::cout << static_cast<std::uint64_t>(it->first) << '\n';
+    }
+
+    std::cout.put('\n');
+
+    for (auto& [key, value] : kwargs)
+    {
+        std::cout << static_cast<std::uint64_t>(key) << '\n';
+    }
 }
 
 int main(void)
@@ -202,6 +221,8 @@ int main(void)
     _test_args_general(65, 98, std::string("c"));
 
     _test_container_with_multiple_insertion_methods({ {"data_int", std::set<int>{ 1, 3, 1, 4, 5, 2, 0 }}, {"data_float", std::set<int>{ 1, 3, 1, 4, 5, 2, 0 }} });
+
+    _test_iterator({ { 'a'_opt, 0 }, { 'b'_opt, 0 }, { 9999999999999999.999999999999999999_opt, 0 } });
 
     return 0;
 }
