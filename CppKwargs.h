@@ -76,7 +76,7 @@ public:
     static constexpr value_type base = 0X1C1ULL;
     static constexpr value_type mod  = 0X91F5BCB8BB0243ULL;
 
-    constexpr operator value_type() noexcept
+    constexpr operator value_type() const noexcept
     { return _M_key; }
 
     constexpr bool operator==(KwargsKey __other) const noexcept
@@ -1336,8 +1336,11 @@ class Kwargs
 {
 public:
 
-    using pair_type = std::pair<KwargsKey, KwargsValue>;
-    using init_type = std::initializer_list<pair_type>;
+    using value_type = std::pair<KwargsKey, KwargsValue>;
+    using container_type = std::initializer_list<value_type>;
+
+    using iterator = typename container_type::iterator;
+    using const_iterator = typename container_type::const_iterator;
 
     struct DataItem
     {
@@ -1361,7 +1364,7 @@ public:
     };
 
     constexpr Kwargs(
-        init_type __list)
+        container_type __list)
         : _M_data(__list)
     {
         /// If _OptionalList is not empty then check
@@ -1404,6 +1407,15 @@ public:
         return DataItem(nullptr);
     }
 
+    constexpr const_iterator begin() const noexcept
+    { return _M_data.begin(); }
+
+    constexpr const_iterator end() const noexcept
+    { return _M_data.end(); }
+
+    const std::size_t size() const noexcept
+    { return _M_data.size(); }
+
 protected:
 
     template<KwargsKey::value_type _Current>
@@ -1416,7 +1428,7 @@ protected:
 
 private:
 
-    std::initializer_list<std::pair<KwargsKey, KwargsValue>> _M_data;
+    container_type _M_data;
 };
 
 #endif  // CPP_KWARGS_H
