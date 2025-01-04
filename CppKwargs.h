@@ -1455,7 +1455,7 @@ public:
     { return _M_data.end(); }
 
     [[nodiscard]]
-    const std::size_t size() const noexcept
+    constexpr std::size_t size() const noexcept
     { return _M_data.size(); }
 
 protected:
