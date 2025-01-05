@@ -1401,8 +1401,7 @@ public:
         const KwargsValue* _M_that;
     };
 
-    constexpr Kwargs(
-        container_type __list)
+    constexpr Kwargs(container_type __list) noexcept
         : _M_data(__list)
     {
         /// If _OptionalList is not empty then check
