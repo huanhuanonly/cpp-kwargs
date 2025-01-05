@@ -1,7 +1,13 @@
 /**
-* Copyright 2024 Yang Huanhuan (3347484963@qq.com). All rights reserved.
+* Copyright (c) 2024-2025 Yang Huanhuan (3347484963@qq.com).
 * 
+* Before using this file, please read its license:
+*
+*     https://github.com/huanhuanonly/cpp-kwargs/blob/main/LICENSE
+*
 * This software is provided "as is", without warranty of any kind, express or implied.
+* 
+* The author reserves the right to modify the license of this file at any time.
 */
 
 /**
@@ -11,13 +17,15 @@
 * 
 * --- This file is the main header for cpp-kwargs ---
 * 
-* @brief Implement Python's kwargs in C++ and extend it.
+* @brief Implement Python's **kwargs style parameter passing in C++.
 * 
-* @class Kwargs
+* This file consists of the following parts:
+*
 * @class KwargsKey
-* @class KwargsValue
-* 
 * @fn    operator""_opt
+* @class KwargsValue
+* @class Args
+* @class Kwargs
 */
 
 #pragma once
