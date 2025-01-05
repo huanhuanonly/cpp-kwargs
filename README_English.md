@@ -3,80 +3,158 @@
 # cpp-kwargs
 
 [![STD-CPP](https://img.shields.io/badge/STD%20C%2B%2B-20-darkorange?style=for-the-badge&logo=C%2B%2B&logoColor=white&logoSize=auto&labelColor=darkcyan)](https://en.cppreference.com/w/cpp/20)
-[![CHINESE](https://img.shields.io/badge/CHINESE-goto-lavender?style=for-the-badge&logo=googletranslate&logoColor=white&logoSize=auto&labelColor=lightskyblue)](./README.md)
+[![CHINESE](https://img.shields.io/badge/Chinese-goto-lavender?style=for-the-badge&logo=googletranslate&logoColor=white&logoSize=auto&labelColor=lightskyblue)](./README.md)
 [![VIEW-CODE](https://img.shields.io/badge/VIEW-CODE-greed?style=for-the-badge&logo=github&logoColor=white&logoSize=auto&labelColor=blue)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h)
 [![EXAMPLES-MORE](https://img.shields.io/badge/EXAMPLES-MORE-gold?style=for-the-badge&logo=openbugbounty&logoColor=white&logoSize=auto&labelColor=orange)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp)
+[![DOCS](https://img.shields.io/badge/Detailed-Documentation-darkcyan?style=for-the-badge&logo=googledocs&logoColor=white&labelColor=cornflowerblue)](https://github.com/huanhuanonly/cpp-kwargs/tree/main/docs)
 
+**_cpp-kwargs is a library that implements Python-like `**kwargs` parameter passing in C++._**
 
-_It is well-known that Python's `**Kwargs` is used to accept an arbitrary number of keyword arguments in function definitions. It wraps all parameters passed in the `Key=Value` form into a dictionary, which can be accessed via `kwargs` inside the function. `**kwargs` allows a function to flexibly accept an undefined number of keyword arguments, improving the extensibility of the code._
+**_It encapsulates a [`Kwargs`](./docs_English/Kwargs.md) class using C++'s powerful template programming to achieve this functionality._**
 
-**_This repository encapsulates a [`Kwargs`](#class-kwargs) class using C++'s powerful template programming to achieve this functionality._**
+<details>
+    <summary>
+            Python's <code>**args</code>
+    </summary>
+
+_In Python, `**Kwargs` is used in function definitions to accept any number of keyword arguments. It wraps all arguments passed as `Key=Value` into a dictionary, which can be accessed via `kwargs` inside the function. `**kwargs` allows functions to flexibly accept a variable number of keyword arguments, enhancing code scalability. [Official Documentation](https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments)._
+
+</details>
 
 </div>
 
-- Function prototypes in _**Python**_:
-    ```py
-    def func(**kwargs): ...
-    ```
+## Application Comparison
 
-- Function prototypes in _**C++**_:
-    ```cpp
-    void func(Kwargs<> kwargs = {})
-    {...}
-    ```
+* _Python (**kwargs)_ and _cpp-kwargs_ both support:
 
-- Get values in _**Python**_:
-    ```py
-    kwargs['data']
-    ```
+  - [x] **Keys** in **any order**;
+  - [x] **Missing** or **extra** keys;
+  - [x] **Limited key names**;
+  - [x] **Values of any type**;
+  - [x] Preserving **original value types**;
 
-- Get values in _**C++**_:
-    ```cpp
-    kwargs["data"].valueOr<type>()  /// `type` is the type of value to return.
-    // Or
-    kwargs["data"]->valueOr<type>()
+* _cpp-kwargs_ additionally supports:
 
-    // If "data" is not found in kwargs,
-    // the valueOr() function's argument list will be used to in-place construct a `type`,
-    // similar to std::vector::emplace_back().
-    ```
+  - [x] Automatic [type conversion](#supported-built-in-type-automatic-conversion) (when input and output types are mismatched);
+  - [x] **Smaller overhead**, `Kwargs` uses `constexpr` internally as much as possible, providing results **at compile time** (if conditions are met);
 
-- [x] Restrict key name options in the parameter list;
+> [!TIP]
+> It's recommended to use C++ $20$, as the `STL` in C++ $20$ is more likely to be declared as `constexpr`, but C++ $17$ or lower may not fully support this.
 
-- [x] Parameters in the argument list can be **optional** and **default**;
+* Only _Python (**kwargs)_ supports:
 
-- [x] The **order of the parameters** in the argument list is **not important**;
+  - [ ] Dynamic return value types;
 
-- [x] [Built-in type auto-converters](#supported-built-in-type-automatic-conversion) automatically convert types when input and output types are inconsistent;
+> [!TIP]
+> In C++, the return type must be determined at compile time.
 
-- [x] Low overhead, using `constexpr` as much as possible, with results determined at compile time;
+### Application in Functions
 
-> It is recommended to use C++ $20$. In C++ $20$, more of the `STL` is declared as `constexpr`, but it is best not to use anything lower than C++ $17$.
+<details open>
+<summary>Function Prototypes</summary>
 
-## Sample Demonstrations
+- In _**Python**_:
+  ```py
+  # Any key name
+  def func(**kwargs): ...
+  
+  # Limited key names (with default values)
+  def func(*, name='empty_name', old=0): ...
+  ```
 
-### Using in a class constructor
+- In _**C++**_:
+  ```cpp
+  // Any key name
+  auto func(Kwargs<> kwargs = {})
+  {...}
+
+  // Limited key names (no need for default values)
+  auto func(Kwargs<"name"_opt, "old"_opt> kwargs = {})
+  {...}
+  ```
+
+</details>
+
+<details open>
+<summary>External Calls</summary>
+
+- In _**Python**_:
+  ```py
+  # Normal
+  func(name='huanhuanonly', old=18)
+
+  # Unexpected type
+  func(name='huanhuanonly', old='18')
+
+  # Reversed order
+  func(old=18, name='huanhuanonly')
+
+  # Empty arguments
+  func()
+  ```
+
+- In _**C++**_:
+  ```cpp
+  // Normal
+  func({ {"name", "huanhuanonly"}, {"old", 18} });
+
+  // Unexpected type
+  func({ {"name", "huanhuanonly"}, {"old", "18"} });
+
+  // Reversed order
+  func({ {"old", 18}, {"name", "huanhuanonly"} });
+
+  // Empty arguments
+  func()
+  ```
+
+</details>
+
+<details open>
+<summary>Internal Value Access</summary>
+
+- In _**Python**_:
+  ```py
+  str(kwargs['name']) if 'name' in kwargs else 'empty_name'
+
+  int(kwargs['old']) if 'name' in kwargs else 0
+  ```
+
+- In _**C++**_:
+  ```cpp
+  kwargs["name"].valueOr<std::string>("empty_name")
+  kwargs["old"].valueOr<int>(0)
+
+  // kwargs["name"].hasValue()
+  // Equivalent to
+  // if 'name' in kwargs
+  ```
+
+</details>
+
+
+### Application in Class Constructors
 
 ```cpp
 struct People
 {
-    std::string name;
-    int old;
-    float height;
+  std::string name;
+  int old;
+  float height;
 
-    // Or Kwargs<> kwargs = {} without checking.
-    People(Kwargs<"name"_opt, "old"_opt, "height"_opt> kwargs = {})
-    {
-        this->name = kwargs["name"].valueOr<std::string>("MyName");
+  // Or Kwargs<> kwargs = {} without checking.
+  People(Kwargs<"name"_opt, "old"_opt, "height"_opt> kwargs = {})
+  {
+    this->name = kwargs["name"].valueOr<std::string>("MyName");
 
-        this->old = kwargs["old"].valueOr<int>(18);
+    this->old = kwargs["old"].valueOr<int>(18);
 
-        this->height = kwargs["height"].valueOr<float>(1.75);
-    }
+    this->height = kwargs["height"].valueOr<float>(1.75);
+  }
 };
 ```
 
-The following ways to construct a `People` object are all valid:
+The following constructors for `People` are all valid:
 
 - `People()`
 - `People({ })`
@@ -87,135 +165,93 @@ The following ways to construct a `People` object are all valid:
 - `People({ {"height", 1.80} })`
 - `People({ {"height", 2} })`
 
-### Print list function in Python and C++
+<details>
+
+<summary>
+    <h3>
+        Simple Example: <code>printList()</code> in Python and C++
+    </h3>
+</summary>
 
 - In Python
+  ```py
+  def printList(value : list, /, *, sep = ', ', end = '\n'):
 
-    ```py
-    def printList(value : list, /, *, sep = ', ', end = '\n'):
+    if len(value) == 0:
+      return
 
-        if len(value) == 0:
-            return
+    for i in range(len(value) - 1):
+      print(value[i], end=sep)
 
-        for i in range(len(value) - 1):
-            print(value[i], end=sep)
-
-        print(value[-1], end=end)
-    ```
+    print(value[-1], end=end)
+  ```
 
 - In C++
+  ```cpp
+  void printList(
+    const std::vector<int>& value,
+    Kwargs<"sep"_opt, "end"_opt> kwargs = { })
+  {
+    if (value.empty())
+      return;
 
-    ```cpp
-    void printList(
-        const std::vector<int>& value,
-        Kwargs<"sep"_opt, "end"_opt> kwargs = { })
-    {
-        if (value.empty())
-            return;
+    for (std::size_t i = 0; i < value.size() - 1; ++i)
+      std::cout << value[i],
+      std::cout << kwargs["sep"].valueOr<std::string_view>(", ");
 
-        for (std::size_t i = 0; i < value.size() - 1; ++i)
-            std::cout << value[i],
-            std::cout << kwargs["sep"].valueOr<std::string_view>(", ");
+    std::cout << value.back();
+    std::cout << kwargs["end"].valueOr<std::string_view>("\n");
+  }
+  ```
 
-        std::cout << value.back();
-        std::cout << kwargs["end"].valueOr<std::string_view>("\n");
-    }
-    ```
-
-Calling:
+Call:
 
 - In Python
-    ```py
-    printList([1, 4, 3, 3, 2, 2, 3], sep=' | ', end='.')
-    ```
+  ```py
+  printList([1, 4, 3, 3, 2, 2, 3], sep=' | ', end='.')
+  ```
 
 - In C++
+  ```cpp
+  printList(
+    {1, 4, 3, 3, 2, 2, 3},
+    { {"sep", " | "}, {"end", '.'} });
+  ```
+
+</details>
+
+For more usage examples, click [![EXAMPLES-MORE](https://img.shields.io/badge/EXAMPLES-MORE-gold?style=plastic&logo=openbugbounty&logoColor=white&logoSize=auto&labelColor=orange)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp).
+
+## Importing into Your Project
+
+1. Click **Download raw file** in [CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) to download it;
+2. Move the file into your project directory.
+3. Include the following code in your project source code:
     ```cpp
-    printList(
-        {1, 4, 3, 3, 2, 2, 3},
-        { {"sep", " | "}, {"end", '.'} });
+    #include "CppKwargs.h"
     ```
 
-## Download and Import
+> [!TIP]
+> This project only requires a single header file to run.
 
-Download the file from [https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) by clicking **Download raw file**, then move the file to your project directory. Include the following code in your project source code:
-```cpp
-#include "CppKwargs.h"
-```
+## Supported Built-in Type Automatic Conversion
 
-It is recommended to use C++ $20$.
-
-## CppKwargs.h
-
-### class `Kwargs`
-
-The type of `**kwargs`, which internally maintains a `std::initializer_list<std::pair<KwargsKey, KwargsValue>>`.
-```cpp
-template<KwargsKey::value_type... _OptionalList>
-class Kwargs {...}
-```
-
-* `_OptionalList`: A list of supported keys, constructed using literals with the `_opt` suffix. If a key not in the list is passed in, an `assert()` will cause a crash.
-
-> If `_OptionalList` is empty, no checks will be made.
-
-### class `KwargsKey`
-
-The type of the key, which can be constructed using the key name (`const char*`):
-
-```cpp
-class KwargsKey
-{
-    using value_type = std::uint64_t;
-}
-```
-
-Defines the user-defined literal suffix `operator""_opt()`, which returns a value of type `KwargsKey` (and `KwargsKey` can be implicitly converted to `KwargsKey::value_type`).
-
-The following usages are valid:
-
-* `"cpp-kwargs"_opt`
-* `'c'_opt`
-* `1314_opt`
-* `1314.520_opt`
-* `99999999999999999999999999999999_opt`
-
-> [!NOTE]
-> If typing underscores is inconvenient, you can modify the definition in `CppKwargs.h`, but it will generate compiler warnings.
-
-### class `KwargsValue`
-
-```cpp
-class KwargsValue {...}
-```
-
-The value type, similar to `std::any`, can be constructed using any type. The difference is that it has built-in type converters, so the input and output types do not necessarily need to be consistent. If they are not, it will attempt to perform a conversion (if possible).
-
-> [!NOTE]
-> It does not use `std::any` internally, but it still ensures correct destruction of objects.
-
-- For **non-`class`**, **non-`union`** types of size **less than or equal to** 8 bytes, a byte-level copy will be made.
-- When using the `const auto&` version of the constructor for `class`, `union`, and types **larger than** 8 bytes, it will internally use a pointer to the original data, not copy it.
-- When using the `auto&&` version of the constructor for `class`, `union`, and types **larger than** 8 bytes, it will use `new` to allocate dynamic memory and use `std::move` to transfer resources.
-
-### Supported Built-in Type Automatic Conversion
-
-- Conversion between all integer and floating point types.
+- All integer and floating-point type conversions.
 - `std::string` $\longleftrightarrow$ `std::string_view`.
 - `std::string` / `std::string_view` $\longleftrightarrow$ `const char*`.
-- `std::vector<char>` / `std::array<char>` / `std::string_view` $\longrightarrow$ `const char*` (no guarantee of null-termination).
+- `std::vector<char>` / `std::array<char>` / `std::string_view` $\longrightarrow$ `const char*` (does not guarantee `\0` terminator).
 - `const char*` / `std::string` / `std::string_view` $\longrightarrow$ `Integer` / `Floating point`.
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`.
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar` (takes the first character, returns `\0` if empty).
 - `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view` (`true` or `false`).
-- Iterable containers (with `.begin()`, `.end()`, and _forward iterators_) $\longrightarrow$ Insertable containers (with `.push_back()` / `.insert()` / `.push()` or `.append()`).
+- Iterable containers (with `.begin()`, `.end()`, and _forward-iterator_) $\longrightarrow$ Insertable containers (with `.push_back()` / `.insert()` / `.push()` or `.append()`).
 
 > [!NOTE]
-> Both containers must contain the same `::value_type` type. The value types do not need to be the same; if they differ, conversion will follow the rules above.
+> Both containers must have `::value_type`, but the value types don't need to match. If they don't, conversion will follow the above rules.
 
 ---
 
-- Copyright 2024 [Yang Huanhuan](https://github.com/huanhuanonly) (3347484963@qq.com). All rights reserved.
+- Copyright $2024$-$2025$ [Yang Huanhuan](https://github.com/huanhuanonly) (3347484963@qq.com). All rights reserved.
 
 - Created by [Yang Huanhuan](https://github.com/huanhuanonly) on $December$ $29, 2024, 14:40:45$.
 
