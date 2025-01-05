@@ -6,73 +6,153 @@
 [![ENGLISH](https://img.shields.io/badge/English-goto-lavender?style=for-the-badge&logo=googletranslate&logoColor=white&logoSize=auto&labelColor=lightskyblue)](./README_English.md)
 [![VIEW-CODE](https://img.shields.io/badge/VIEW-CODE-greed?style=for-the-badge&logo=github&logoColor=white&logoSize=auto&labelColor=blue)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h)
 [![EXAMPLES-MORE](https://img.shields.io/badge/EXAMPLES-MORE-gold?style=for-the-badge&logo=openbugbounty&logoColor=white&logoSize=auto&labelColor=orange)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp)
+[![DOCS](https://img.shields.io/badge/Detailed-Documentation-darkcyan?style=for-the-badge&logo=googledocs&logoColor=white&labelColor=cornflowerblue
+)](https://github.com/huanhuanonly/cpp-kwargs/tree/main/docs)
 
 
-_众所周知，Python 中的 `**Kwargs` 用于函数定义时接受任意数量的关键字参数。它将所有通过 `Key=Value` 形式传递的参数封装成一个字典，在函数内部可以通过 `kwargs` 访问这些参数，`**kwargs` 使得函数能够灵活地接受不定数量的关键字参数，提升了代码的可扩展性。_
+**_cpp-kwargs 是一个能在 C++ 中实现 Python `**kwargs` 传参的库。_**
 
-**_该仓库通过 C++ 强大的模板编程封装了一个 [`Kwargs`](#class-kwargs) 类以此来实现了该功能。_**
+**_它通过 C++ 强大的模板编程封装了一个 [`Kwargs`](./docs/Kwargs.md) 类以此来实现了该功能。_**
+
+<details>
+    <summary>
+            Python 中的 <code>**args</code>
+    </summary>
+
+_在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键字参数。它将所有通过 `Key=Value` 形式传递的参数封装成一个字典，在函数内部可以通过 `kwargs` 访问这些参数，`**kwargs` 使得函数能够灵活地接受不定数量的关键字参数，提升了代码的可扩展性。[官方文档](https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments)。_
+
+</details>
 
 </div>
 
-- Function prototypes in _**Python**_:
-    ```py
-    def func(**kwargs): ...
-    ```
+## 应用对比
 
-- Function prototypes in _**C++**_:
-    ```cpp
-    void func(Kwargs<> kwargs = {})
-    {...}
-    ```
+* _Python (**kwargs)_ 和 _cpp-kwargs_ 都支持的：
 
-- Get values in _**Python**_:
-    ```py
-    kwargs['data']
-    ```
+  - [x] 支持 **按任意顺序排列的** 键；
+  - [x] 支持 **缺少的** 或 **多余的** 键；
+  - [x] 支持 **限定键名**；
+  - [x] 支持 **任意类型的** 值；
+  - [x] 保留 **原始值的类型信息**；
 
-- Get values in _**C++**_:
-    ```cpp
-    kwargs["data"].valueOr<type>()  /// `type` is the type of value to return.
-    // Or
-    kwargs["data"]->valueOr<type>()
+* _cpp-kwargs_ 额外支持的：
 
-    // 如果 kwargs 中找不到 "data"，
-    // 将使用 valueOr() 函数中的参数列表原地构造一个 `type`，
-    // 类似 std::vector::emplace_back()。
-    ```
+  - [x] 自动的 [类型转换](#支持的内置类型自动转换)（传入类型和传出的类型不一致时）；
+  - [x] 较小的开销，`Kwargs` 的内部会尽可能地使用 `constexpr`，将在 **编译期得到结果** （如果满足条件的话）；
 
-- [x] 限制参数列表中的键名选项；
-
-- [x] 参数列表中的参数可以 **选填** 和 **缺省**;
-
-- [x] 参数列表中的参数 **填入顺序不重要**;
-
-- [x] [内置类型自动转换器](#支持的内置类型自动转换)，传入类型和传出类型不一致时自动做类型转换；
-
-- [x] 较小的开销，尽可能地使用 `constexpr`，将在编译期得到结果；
-
+> [!TIP]
 > 推荐使用 C++ $20$，在 C++ $20$ 中，`STL` 更多的被声明为 `constexpr`，但最好不要低于 C++ $17$。
 
-## 部分演示
+* 仅 _Python (**kwargs)_ 支持的：
 
-### 在类的构造函数中使用
+  - [ ] 动态的返回值类型；
+
+> [!TIP]
+> C++ 的返回值类型必须在编译时确定。
+
+### 应用在函数中
+
+<details open>
+<summary>函数原型</summary>
+
+- In _**Python**_:
+  ```py
+  # 任意的键名
+  def func(**kwargs): ...
+  
+  # 限定键名（带默认值）
+  def func(*, name='empty_name', old=0): ...
+  ```
+
+- In _**C++**_:
+  ```cpp
+  // 任意的键名
+  auto func(Kwargs<> kwargs = {})
+  {...}
+
+  // 限定键名（无需带默认值）
+  auto func(Kwargs<"name"_opt, "old"_opt> kwargs = {})
+  {...}
+  ```
+
+</details>
+
+<details open>
+<summary>外部调用</summary>
+
+- In _**Python**_:
+  ```py
+  # 正常
+  func(name='huanhuanonly', old=18)
+
+  # 非预期的类型
+  func(name='huanhuanonly', old='18')
+
+  # 相反的顺序
+  func(old=18, name='huanhuanonly')
+
+  # 空的参数
+  func()
+  ```
+
+- In _**C++**_:
+  ```cpp
+  // 正常
+  func({ {"name", "huanhuanonly"}, {"old", 18} });
+
+  // 非预期的类型
+  func({ {"name", "huanhuanonly"}, {"old", "18"} });
+
+  // 相反的顺序
+  func({ {"old", 18}, {"name", "huanhuanonly"} });
+
+  // 空的参数
+  func()
+  ```
+
+</details>
+
+<details open>
+<summary>内部获取值</summary>
+
+- In _**Python**_:
+  ```py
+  str(kwargs['name']) if 'name' in kwargs else 'empty_name'
+
+  int(kwargs['old']) if 'name' in kwargs else 0
+  ```
+
+- In _**C++**_:
+  ```cpp
+  kwargs["name"].valueOr<std::string>("empty_name")
+  kwargs["old"].valueOr<int>(0)
+
+  // kwargs["name"].hasValue()
+  // 等效于
+  // if 'name' in kwargs
+  ```
+
+</details>
+
+
+### 应用在类的构造函数中
 
 ```cpp
 struct People
 {
-    std::string name;
-    int old;
-    float height;
+  std::string name;
+  int old;
+  float height;
 
-    // Or Kwargs<> kwargs = {} without checking.
-    People(Kwargs<"name"_opt, "old"_opt, "height"_opt> kwargs = {})
-    {
-        this->name = kwargs["name"].valueOr<std::string>("MyName");
+  // Or Kwargs<> kwargs = {} without checking.
+  People(Kwargs<"name"_opt, "old"_opt, "height"_opt> kwargs = {})
+  {
+    this->name = kwargs["name"].valueOr<std::string>("MyName");
 
-        this->old = kwargs["old"].valueOr<int>(18);
+    this->old = kwargs["old"].valueOr<int>(18);
 
-        this->height = kwargs["height"].valueOr<float>(1.75);
-    }
+    this->height = kwargs["height"].valueOr<float>(1.75);
+  }
 };
 ```
 
@@ -87,119 +167,76 @@ struct People
 - `People({ {"height", 1.80} })`
 - `People({ {"height", 2} })`
 
+<details>
 
-### Python 和 C++ 中的打印列表函数
+<summary>
+    <h3>
+        简单示例：Python 和 C++ 中的 <code>printList()</code>
+    </h3>
+</summary>
 
 - In Python
+  ```py
+  def printList(value : list, /, *, sep = ', ', end = '\n'):
 
-    ```py
-    def printList(value : list, /, *, sep = ', ', end = '\n'):
+    if len(value) == 0:
+      return
 
-        if len(value) == 0:
-            return
+    for i in range(len(value) - 1):
+      print(value[i], end=sep)
 
-        for i in range(len(value) - 1):
-            print(value[i], end=sep)
-
-        print(value[-1], end=end)
-    ```
+    print(value[-1], end=end)
+  ```
 
 - In C++
+  ```cpp
+  void printList(
+    const std::vector<int>& value,
+    Kwargs<"sep"_opt, "end"_opt> kwargs = { })
+  {
+    if (value.empty())
+      return;
 
-    ```cpp
-    void printList(
-        const std::vector<int>& value,
-        Kwargs<"sep"_opt, "end"_opt> kwargs = { })
-    {
-        if (value.empty())
-            return;
+    for (std::size_t i = 0; i < value.size() - 1; ++i)
+      std::cout << value[i],
+      std::cout << kwargs["sep"].valueOr<std::string_view>(", ");
 
-        for (std::size_t i = 0; i < value.size() - 1; ++i)
-            std::cout << value[i],
-            std::cout << kwargs["sep"].valueOr<std::string_view>(", ");
-
-        std::cout << value.back();
-        std::cout << kwargs["end"].valueOr<std::string_view>("\n");
-    }
-    ```
+    std::cout << value.back();
+    std::cout << kwargs["end"].valueOr<std::string_view>("\n");
+  }
+  ```
 
 调用：
 
 - In Python
-    ```py
-    printList([1, 4, 3, 3, 2, 2, 3], sep=' | ', end='.')
-    ```
+  ```py
+  printList([1, 4, 3, 3, 2, 2, 3], sep=' | ', end='.')
+  ```
 
 - In C++
+  ```cpp
+  printList(
+    {1, 4, 3, 3, 2, 2, 3},
+    { {"sep", " | "}, {"end", '.'} });
+  ```
+
+</details>
+
+在 [![EXAMPLES-MORE](https://img.shields.io/badge/EXAMPLES-MORE-gold?style=plastic&logo=openbugbounty&logoColor=white&logoSize=auto&labelColor=orange)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp) 中可以看到更多的使用方式。
+
+## 导入到自己的项目中
+
+1. 在 [CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) 中点击 **Download raw file** 下载；
+2. 将该文件移动到你的项目目录。
+3. 在项目源代码中包含以下代码：
     ```cpp
-    printList(
-        {1, 4, 3, 3, 2, 2, 3},
-        { {"sep", " | "}, {"end", '.'} });
+    #include "CppKwargs.h"
     ```
 
-## 下载和导入
+> [!TIP]
+> 该项目只需要一个头文件即可运行。
 
-在 [https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) 中点击 **Download raw file** 下载，并将该文件移动到项目目录，在项目源代码中包含以下代码：
-```cpp
-#include "CppKwargs.h"
-```
-
-推荐使用 C++ $20$。
-
-## CppKwargs.h
-
-### class `Kwargs`
-
-`**kwargs` 的类型，底层维护了一个 `std::initializer_list<std::pair<KwargsKey, KwargsValue>>`。
-```cpp
-template<KwargsKey::value_type... _OptionalList>
-class Kwargs {...}
-```
-
-* `_OptionalList`: 支持的键的列表，使用以 `_opt` 后缀的字面量进行构造，如果传入不在列表中的键，将会通过 `assert()` 引发崩溃。
-
-> 如果 `_OptionalList` 为空，则不做检查。
-
-### class `KwargsKey`
-
-键的类型，可以通过键名（`const char*`）进行构造，
-
-```cpp
-class KwargsKey
-{
-    using value_type = std::uint64_t;
-}
-```
-
-定义了 用户自定义字面量后缀 `operator""_opt()`，它的返回值类型为 `KwargsKey`（`KwargsKey` 可以隐式转换为 `KwargsKey::value_type`。
-
-以下都是可行的使用：
-
-* `"cpp-kwargs"_opt`
-* `'c'_opt`
-* `1314_opt`
-* `1314.520_opt`
-* `99999999999999999999999999999999_opt`
-
-> [!NOTE]
-> 如果觉得下划线不好输入可以直接修改在 `CppKwargs.h` 中的定义，但是会受到编译器的警告。
-
-### class `KwargsValue`
-
-```cpp
-class KwargsValue {...}
-```
-
-值的类型，类似 `std::any`，它可以使用任意类型进行构造，不同的是，它内置了类型转换器，传入类型和传出类型不一定需要一致，不一致时将尝试进行转换（如果可以的话）。
-
-> [!NOTE]
-> 它内部并不使用 `std::any`，但是它同样会保证 析构函数 的正确调用。
-
-- 对于 **非** `class`、`union` 且 **小于等于** $8$ 个字节的类型，将会进行字节级别的拷贝。
-- 当使用 `const auto&` 版本的构造函数时，对于 `class`、`union` 以及 **大于** $8$ 个字节的类型，它内部会使用一个指针指向原始数据，而不是复制它。
-- 当使用 `auto&&` 版本的构造函数时，对于 `class`、`union` 以及 **大于** $8$ 个字节的类型，它会调用 `new` 来申请一块动态内存，并使用 `std::move` 进行资源的转移。
-
-### 支持的内置类型自动转换
+## 支持的内置类型自动转换
 
 - 所有的整型和浮点型之间的互相转换。
 - `std::string` $\longleftrightarrow$ `std::string_view`。
