@@ -253,7 +253,7 @@ struct People
 
 ---
 
-- Copyright $2024$-$2025$ [Yang Huanhuan](https://github.com/huanhuanonly) (3347484963@qq.com). All rights reserved.
+- Copyright $2024\text{-}2025$ [Yang Huanhuan](https://github.com/huanhuanonly) (3347484963@qq.com). All rights reserved.
 
 - Created by [Yang Huanhuan](https://github.com/huanhuanonly) on $December$ $29, 2024, 14:40:45$.
 
