@@ -119,7 +119,7 @@ _在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键�
   ```py
   str(kwargs['name']) if 'name' in kwargs else 'empty_name'
 
-  int(kwargs['old']) if 'name' in kwargs else 0
+  int(kwargs['old']) if 'old' in kwargs else 0
   ```
 
 - In _**C++**_:
@@ -177,7 +177,7 @@ struct People
 
 - In Python
   ```py
-  def printList(value : list, /, *, sep = ', ', end = '\n'):
+  def printList(value: list, /, *, sep = ', ', end = '\n'):
 
     if len(value) == 0:
       return
@@ -227,7 +227,7 @@ struct People
 ## 导入到自己的项目中
 
 1. 在 [CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) 中点击 **Download raw file** 下载；
-2. 将该文件移动到你的项目目录。
+2. 将该文件移动到你的项目目录；
 3. 在项目源代码中包含以下代码：
     ```cpp
     #include "CppKwargs.h"

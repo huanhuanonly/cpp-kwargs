@@ -6,7 +6,7 @@
 [![CHINESE](https://img.shields.io/badge/Chinese-goto-lavender?style=for-the-badge&logo=googletranslate&logoColor=white&logoSize=auto&labelColor=lightskyblue)](./README.md)
 [![VIEW-CODE](https://img.shields.io/badge/VIEW-CODE-greed?style=for-the-badge&logo=github&logoColor=white&logoSize=auto&labelColor=blue)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h)
 [![EXAMPLES-MORE](https://img.shields.io/badge/EXAMPLES-MORE-gold?style=for-the-badge&logo=openbugbounty&logoColor=white&logoSize=auto&labelColor=orange)](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp)
-[![DOCS](https://img.shields.io/badge/Detailed-Documentation-darkcyan?style=for-the-badge&logo=googledocs&logoColor=white&labelColor=cornflowerblue)](https://github.com/huanhuanonly/cpp-kwargs/tree/main/docs)
+[![DOCS](https://img.shields.io/badge/Detailed-Documentation-darkcyan?style=for-the-badge&logo=googledocs&logoColor=white&labelColor=cornflowerblue)](https://github.com/huanhuanonly/cpp-kwargs/tree/main/docs_English)
 
 **_cpp-kwargs is a library that implements Python-like `**kwargs` parameter passing in C++._**
 
@@ -117,7 +117,7 @@ _In Python, `**Kwargs` is used in function definitions to accept any number of k
   ```py
   str(kwargs['name']) if 'name' in kwargs else 'empty_name'
 
-  int(kwargs['old']) if 'name' in kwargs else 0
+  int(kwargs['old']) if 'old' in kwargs else 0
   ```
 
 - In _**C++**_:
@@ -175,7 +175,7 @@ The following constructors for `People` are all valid:
 
 - In Python
   ```py
-  def printList(value : list, /, *, sep = ', ', end = '\n'):
+  def printList(value: list, /, *, sep = ', ', end = '\n'):
 
     if len(value) == 0:
       return
@@ -225,7 +225,7 @@ For more usage examples, click [![EXAMPLES-MORE](https://img.shields.io/badge/EX
 ## Importing into Your Project
 
 1. Click **Download raw file** in [CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) to download it;
-2. Move the file into your project directory.
+2. Move the file into your project directory;
 3. Include the following code in your project source code:
     ```cpp
     #include "CppKwargs.h"
