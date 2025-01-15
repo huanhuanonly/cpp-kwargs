@@ -96,6 +96,41 @@ public:
     constexpr bool operator<(KwargsKey __other) const noexcept
     { return _M_key < __other._M_key; }
 
+
+    /// @brief Multiple KwargsKeys can be joined using the `or` operator.
+    [[nodiscard]]
+    friend constexpr std::array<KwargsKey, 2>
+        operator||(KwargsKey __first, KwargsKey __second) noexcept
+    { return {__first, __second}; }
+
+    template<std::size_t _StringSize>
+    [[nodiscard]]
+    friend constexpr std::array<KwargsKey, 2>
+        operator||(KwargsKey __first, const char (&__second)[_StringSize]) noexcept
+    { return {__first, KwargsKey(__second)}; }
+
+    template<std::size_t _Size>
+    [[nodiscard]]
+    friend constexpr std::array<KwargsKey, _Size + 1>
+        operator||(const std::array<KwargsKey, _Size>& __first, KwargsKey __second) noexcept
+    {
+        std::array<KwargsKey, _Size + 1> res;
+        std::copy(__first.begin(), __first.end(), res.begin());
+        res.back() = __second;
+        return res;
+    }
+
+    template<std::size_t _Size, std::size_t _StringSize>
+    [[nodiscard]]
+    friend constexpr std::array<KwargsKey, _Size + 1>
+        operator||(const std::array<KwargsKey, _Size>& __first, const char (&__second)[_StringSize]) noexcept
+    {
+        std::array<KwargsKey, _Size + 1> res;
+        std::copy(__first.begin(), __first.end(), res.begin());
+        res.back() = KwargsKey(__second);
+        return res;
+    }
+
 private:
 
     value_type _M_key = 0;
@@ -1450,6 +1485,23 @@ public:
             }
         }
 
+        return DataItem(nullptr);
+    }
+
+    template<std::size_t _Size>
+    [[nodiscard]]
+    constexpr DataItem operator[](const std::array<KwargsKey, _Size>& __options) noexcept
+    {
+        for (KwargsKey key : __options)
+        {
+            for (const auto& i : _M_data)
+            {
+                if (i.first == key)
+                {
+                    return DataItem(&i.second);
+                }
+            }
+        }
         return DataItem(nullptr);
     }
 
