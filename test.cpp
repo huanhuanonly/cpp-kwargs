@@ -188,6 +188,13 @@ static void _test_iterator(Kwargs<> kwargs = { })
     }
 }
 
+static void _test_joinable_kwargskey(Kwargs<"name"_opt, "class"_opt> kwargs)
+{
+    _Test_Begin_
+
+    std::cout << kwargs["name"_opt or "class"].valueOr<std::string>("name or class");
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -223,6 +230,11 @@ int main(void)
     _test_container_with_multiple_insertion_methods({ {"data_int", std::set<int>{ 1, 3, 1, 4, 5, 2, 0 }}, {"data_float", std::set<int>{ 1, 3, 1, 4, 5, 2, 0 }} });
 
     _test_iterator({ { 'a'_opt, 0 }, { 'b'_opt, 0 }, { 9999999999999999.999999999999999999_opt, 0 } });
+
+    _test_joinable_kwargskey({ {"name", "name: huanhuanonly"} });
+    _test_joinable_kwargskey({ {"class", "class: huanhuanonly"} });
+    _test_joinable_kwargskey({ {"name", "name: huanhuanonly"}, {"class", "class: huanhuanonly"} });
+    _test_joinable_kwargskey({ });
 
     return 0;
 }
