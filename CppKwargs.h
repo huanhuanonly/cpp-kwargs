@@ -47,7 +47,7 @@
 #include <cstdlib>
 
 /**
-* @brief Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey
+* @brief Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey.
 */
 #ifndef KWARGSKEY_CASE_INSENSITIVE
 #   define KWARGSKEY_TO_LOWER_CASE(c) (c)
@@ -205,7 +205,7 @@ protected:
     template<typename _Tp>
     static void _S_manage(WorkFlags __work, void* __inData, void* __outData)
     {
-        using type = std::remove_reference_t<_Tp>;
+        using type = std::remove_cv_t<std::remove_reference_t<_Tp>>;
 
         switch (__work)
         {
@@ -358,7 +358,7 @@ protected:
     struct _S_hasValueType : std::false_type { };
 
     template<typename _Tp>
-    struct _S_hasValueType<_Tp, std::void_t<typename _Tp::value_type>>
+    struct _S_hasValueType<_Tp, std::void_t<typename std::remove_reference_t<_Tp>::value_type>>
         : std::true_type { };
 
     template<typename _Tp>
@@ -548,7 +548,7 @@ public:
     template<typename _Tp>
     [[nodiscard]]
     constexpr bool isSameType() const noexcept
-    { return typeid(_Tp).hash_code() == typeHashCode(); }
+    { return typeid(std::remove_cv_t<std::remove_reference_t<_Tp>>).hash_code() == typeHashCode(); }
 
     [[nodiscard]]
     constexpr bool isInteger() const noexcept
@@ -781,6 +781,7 @@ public:
     template<typename _Tp>
     [[nodiscard]]
     constexpr std::enable_if_t<
+            std::is_same_v<std::remove_cv_t<_Tp>, char> ||
             std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
             std::is_same_v<std::remove_cv_t<_Tp>, unsigned char>, _Tp>
         value() const noexcept
@@ -823,21 +824,21 @@ public:
                 return '\0';
         }
 
-        assert(false && "Incorrect conversion.");
-        return '\0';
+        return static_cast<_Tp>(value<int>());
     }
 
     template<typename _Tp>
     [[nodiscard]]
     constexpr std::enable_if_t<
             std::is_integral_v<std::remove_cv_t<_Tp>> &&
-                !(std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
+                !(std::is_same_v<std::remove_cv_t<_Tp>, char> ||
+                std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
                 std::is_same_v<std::remove_cv_t<_Tp>, unsigned char>), _Tp>
         value() const noexcept
     {
         std::size_t hashCode = typeHashCode();
 
-        if (typeid(_Tp).hash_code() == hashCode)
+        if (typeid(std::remove_cv_t<std::remove_reference_t<_Tp>>).hash_code() == hashCode)
         {
             if (_M_flags == ValueFlag) [[likely]]
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
@@ -895,6 +896,13 @@ public:
         /// const char* -> integer
         if (_M_flags == StringLiteralFlag)
         {
+            if (reinterpret_cast<const char*>(_M_data._M_ptr) == nullptr)
+                return 0;
+            else if (KwargsKey::_S_tolower(reinterpret_cast<const char*>(_M_data._M_ptr)[0]) == 't')
+                return true;
+            else if (KwargsKey::_S_tolower(reinterpret_cast<const char*>(_M_data._M_ptr)[0]) == 'f')
+                return false;
+
             char* endptr;
 
             if constexpr (std::is_signed_v<_Tp>)
@@ -909,6 +917,11 @@ public:
         /// std::string -> integer
         if (typeid(std::string).hash_code() == hashCode)
         {
+            if (KwargsKey::_S_tolower((*reinterpret_cast<const std::string*>(_M_data._M_ptr)).front()) == 't')
+                return true;
+            else if (KwargsKey::_S_tolower((*reinterpret_cast<const std::string*>(_M_data._M_ptr)).front()) == 'f')
+                return false;
+
             try
             {
                 if constexpr (std::is_signed_v<_Tp>)
@@ -936,6 +949,14 @@ public:
             if (sv->empty())
             {
                 return 0;
+            }
+            else if (KwargsKey::_S_tolower(sv->front()) == 't')
+            {
+                return true;
+            }
+            else if (KwargsKey::_S_tolower(sv->front()) == 'f')
+            {
+                return false;
             }
             else if (sv->back() == '\0')
             {
@@ -966,7 +987,7 @@ public:
     {
         std::size_t hashCode = typeHashCode();
 
-        if (typeid(_Tp).hash_code() == hashCode)
+        if (typeid(std::remove_cv_t<std::remove_reference_t<_Tp>>).hash_code() == hashCode)
         {
             if (_M_flags == ValueFlag) [[likely]]
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
@@ -1083,13 +1104,13 @@ public:
         {
             if (not isSameType<_Tp>() && hasValueType() && isIterable())
             {
-                if (typeid(_S_valueTypeOf_t<_Tp>).hash_code() == valueTypeHashCode())
+                if (typeid(_S_valueTypeOf_t<std::remove_cv_t<std::remove_reference_t<_Tp>>>).hash_code() == valueTypeHashCode())
                 {
-                    return _M_iterateAndCopy<_Tp>();
+                    return _M_iterateAndCopy<std::remove_cv_t<std::remove_reference_t<_Tp>>>();
                 }
                 else
                 {
-                    return _M_iterateAnyAndCopy<_Tp>();
+                    return _M_iterateAnyAndCopy<std::remove_cv_t<std::remove_reference_t<_Tp>>>();
                 }
             }
         }
