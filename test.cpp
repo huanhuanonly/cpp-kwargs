@@ -195,6 +195,18 @@ static void _test_joinable_kwargskey(Kwargs<"name"_opt, "class"_opt> kwargs)
     std::cout << kwargs["name"_opt or "class"].valueOr<std::string>("name or class");
 }
 
+static void _test_case_insensitive()
+{
+    _Test_Begin_
+
+    std::cout << std::boolalpha;
+
+    std::cout << ("abc"_opt == "ABC"_opt) << '\n';
+    std::cout << ("abc"_opt == "AbC"_opt) << '\n';
+    std::cout << ("abc"_opt == "aBc"_opt) << '\n';
+    std::cout << ("Abc"_opt == "aBC"_opt) << '\n';
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -235,6 +247,8 @@ int main(void)
     _test_joinable_kwargskey({ {"class", "class: huanhuanonly"} });
     _test_joinable_kwargskey({ {"name", "name: huanhuanonly"}, {"class", "class: huanhuanonly"} });
     _test_joinable_kwargskey({ });
+
+    _test_case_insensitive();
 
     return 0;
 }
