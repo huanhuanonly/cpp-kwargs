@@ -46,6 +46,15 @@
 #include <cassert>
 #include <cstdlib>
 
+/**
+* @brief Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey
+*/
+#ifndef KWARGSKEY_CASE_INSENSITIVE
+#   define KWARGSKEY_TO_LOWER_CASE(c) (c)
+#else
+#   define KWARGSKEY_TO_LOWER_CASE(c) _S_tolower(c)
+#endif
+
 class KwargsKey
 {
 public:
@@ -72,7 +81,7 @@ public:
     { }
 
     constexpr void pushBack(char __c) noexcept
-    { _M_key = ((_M_key * base) % mod + __c) % mod; }
+    { _M_key = ((_M_key * base) % mod + KWARGSKEY_TO_LOWER_CASE(__c)) % mod; }
 
     template<typename... _Args>
     constexpr void pushBack(char __c, _Args&&... __args) noexcept
@@ -129,6 +138,20 @@ public:
         std::copy(__first.begin(), __first.end(), res.begin());
         res.back() = KwargsKey(__second);
         return res;
+    }
+
+public:
+
+    static constexpr char _S_tolower(char __c) noexcept
+    {
+        if (__c >= 'A' && __c <= 'Z')
+        {
+            return __c - ('A' - 'a');
+        }
+        else
+        {
+            return __c;
+        }
     }
 
 private:
@@ -1095,7 +1118,6 @@ public:
     constexpr std::uint32_t size() const noexcept
     { return _M_size; }
 
-    [[nodiscard]]
     inline KwargsValue& operator=(const KwargsValue& __other)
     {
         if (_M_flags == AppliedFlag)
@@ -1115,7 +1137,6 @@ public:
         return *this;
     }
 
-    [[nodiscard]]
     inline KwargsValue& operator=(KwargsValue&& __other) noexcept
     {
         if (_M_flags == AppliedFlag)
