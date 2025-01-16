@@ -207,6 +207,14 @@ static void _test_case_insensitive()
     std::cout << ("Abc"_opt == "aBC"_opt) << '\n';
 }
 
+static void _test_string_to_bool(Kwargs<"true"_opt, "false"_opt> kwargs)
+{
+    _Test_Begin_
+
+    std::cout << kwargs["true"].valueOr<bool>() << '\n';
+    std::cout << kwargs["false"].valueOr<bool>() << '\n';
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -249,6 +257,9 @@ int main(void)
     _test_joinable_kwargskey({ });
 
     _test_case_insensitive();
+
+    _test_string_to_bool({ {"true", "true"}, {"false", std::string("false")} });
+    _test_string_to_bool({ {"true", "True"}, {"false", std::string_view("False")} });
 
     return 0;
 }
