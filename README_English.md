@@ -300,7 +300,7 @@ target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`.
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar` (takes the first character, returns `\0` if empty).
 - `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view` (`true` or `false`).
-- `"true"` $\longrightarrow$ `true`, `"false"` $\longrightarrow$ `false`。
+- `"true"` $\longrightarrow$ `true`, `"false"` $\longrightarrow$ `false`.
 - Iterable containers (with `.begin()`, `.end()`, and _forward-iterator_) $\longrightarrow$ Insertable containers (with `.push_back()` / `.insert()` / `.push()` or `.append()`).
 
 > [!NOTE]
