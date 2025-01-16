@@ -14,7 +14,7 @@
 
 <details>
     <summary>
-            Python's <code>**args</code>
+            Python's <code>**kwargs</code>
     </summary>
 
 _In Python, `**Kwargs` is used in function definitions to accept any number of keyword arguments. It wraps all arguments passed as `Key=Value` into a dictionary, which can be accessed via `kwargs` inside the function. `**kwargs` allows functions to flexibly accept a variable number of keyword arguments, enhancing code scalability. [Official Documentation](https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments)._
@@ -37,9 +37,10 @@ _In Python, `**Kwargs` is used in function definitions to accept any number of k
 
   - [x] Automatic [type conversion](#supported-built-in-type-automatic-conversion) (when input and output types are mismatched);
   - [x] **Smaller overhead**, `Kwargs` uses `constexpr` internally as much as possible, providing results **at compile time** (if conditions are met);
+  - [x] Key names are **case-insensitive** (_optional_);
 
 > [!TIP]
-> It's recommended to use C++ $20$, as the `STL` in C++ $20$ is more likely to be declared as `constexpr`, but C++ $17$ or lower may not fully support this.
+> It's recommended to use C++ $20$, as the `STL` in C++ $20$ is more likely to be declared as `constexpr`, and code _writing_ and _testing_ are all done in C++ $20$.
 
 * Only _Python (**kwargs)_ supports:
 
@@ -136,34 +137,52 @@ _In Python, `**Kwargs` is used in function definitions to accept any number of k
 ### Application in Class Constructors
 
 ```cpp
-struct People
+struct Font
 {
-  std::string name;
-  int old;
-  float height;
+  std::string faceName;
+  int size;
+  float escapement;
+  bool italic;
 
   // Or Kwargs<> kwargs = {} without checking.
-  People(Kwargs<"name"_opt, "old"_opt, "height"_opt> kwargs = {})
-  {
-    this->name = kwargs["name"].valueOr<std::string>("MyName");
-
-    this->old = kwargs["old"].valueOr<int>(18);
-
-    this->height = kwargs["height"].valueOr<float>(1.75);
-  }
+  Font(Kwargs<
+    "faceName"_opt, /* Or */ "name"_opt,
+    "size"_opt,
+    "escapement"_opt,
+    "italic"_opt, /* Or */ "i"_opt> kwargs = {})
+      : faceName(kwargs["faceName"_opt or "name"].valueOr<std::string>())
+      , size(kwargs["size"].valueOr<int>(9))
+      , escapement(kwargs["escapement"].valueOr<float>(0.00f))
+      , italic(kwargs["italic"_opt or "i"].valueOr<bool>(false))
+  { }
 };
 ```
 
 The following constructors for `People` are all valid:
 
-- `People()`
-- `People({ })`
-- `People({ {"name", "huanhuanonly"} })`
-- `People({ {"name"_opt, "huanhuanonly"} })`
-- `People({ {"old"_opt, 16} })`
-- `People({ {"old", 16ULL}, {"name", "huanhuanonly"} })`
-- `People({ {"height", 1.80} })`
-- `People({ {"height", 2} })`
+- `Font()`
+  - Equal to: `Font{ std::string(), 9, 0.00f, false }`
+
+- `Font({ })`
+  - Equal to: `Font{ std::string(), 9, 0.00f, false }`
+
+- `Font({ {"name", "Arial"}, {"italic", true} })`
+  - Equal to: `Font{ std::string("Arial"), 9, 0.00f, true }`
+
+- `Font({ {"italic", "true"}, {"name", "Arial"} })`
+  - Equal to: `Font{ std::string("Arial"), 9, 0.00f, true }`
+
+- `Font({ {"i", "True"}, {"faceName", "Arial"} })`
+  - Equal to: `Font{ std::string("Arial"), 9, 0.00f, true }`
+
+- `Font({ {"size", 18}, {"escapement", 45} })`
+  - Equal to: `Font{ std::string(), 18, 45.00f, false }`
+
+- `Font({ {"size", "18"}, {"escapement", "49.2"} })`
+  - Equal to: `Font{ std::string(), 18, 49.20f, false }`
+
+- `Font({ {"size", 18.8}, {"escapement", 49.2}, {"i", 't'} })`
+  - Equal to: `Font{ std::string(), 18, 49.20f, true }`
 
 <details>
 
@@ -224,15 +243,52 @@ For more usage examples, click [![EXAMPLES-MORE](https://img.shields.io/badge/EX
 
 ## Importing into Your Project
 
-1. Click **Download raw file** in [CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) to download it;
-2. Move the file into your project directory;
-3. Include the following code in your project source code:
-    ```cpp
-    #include "CppKwargs.h"
-    ```
+### Clone this repository
+```git
+clone https://github.com/huanhuanonly/cpp-kwargs.git
+```
+
+### Configure in `CMakeList.txt`
+- CMakeList.txt
+```cmake
+set (CPP_KWARGS_REPOS "https://github.com/huanhuanonly/cpp-kwargs.git")
+set (CPP_KWARGS_PATH "${CMAKE_SOURCE_DIR}/cpp-kwargs")
+
+include (FetchContent)
+
+if (NOT EXISTS CPP_KWARGS_PATH)
+	FetchContent_Declare (
+        CppKwargs
+        GIT_REPOSITORY ${CPP_KWARGS_REPOS}
+        GIT_TAG main
+        GIT_SHALLOW TRUE
+        SOURCE_DIR ${CPP_KWARGS_PATH}
+    )
+
+    FetchContent_MakeAvailable (CppKwargs)
+endif()
+
+include_directories (${CPP_KWARGS_PATH})
+
+target_sources (YourExecutable PUBLIC "${CPP_KWARGS_PATH}/CppKwargs.h")
+```
+
+- main.cpp
+```cpp
+#include <CppKwargs.h>
+```
 
 > [!TIP]
 > This project only requires a single header file to run.
+
+### Set `KwargsKey` to be case-insensitive
+
+* Define `KWARGSKEY_CASE_INSENSITIVE` before the first `#include "CppKwargs.h"`.
+
+* Alternatively, add the following line to your project's CMakeList.txt file:
+```cmake
+target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
+```
 
 ## Supported Built-in Type Automatic Conversion
 
@@ -244,6 +300,7 @@ For more usage examples, click [![EXAMPLES-MORE](https://img.shields.io/badge/EX
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`.
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar` (takes the first character, returns `\0` if empty).
 - `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view` (`true` or `false`).
+- `"true"` $\longrightarrow$ `true`, `"false"` $\longrightarrow$ `false`。
 - Iterable containers (with `.begin()`, `.end()`, and _forward-iterator_) $\longrightarrow$ Insertable containers (with `.push_back()` / `.insert()` / `.push()` or `.append()`).
 
 > [!NOTE]

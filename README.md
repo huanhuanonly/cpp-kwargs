@@ -16,7 +16,7 @@
 
 <details>
     <summary>
-            Python 中的 <code>**args</code>
+            Python 中的 <code>**kwargs</code>
     </summary>
 
 _在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键字参数。它将所有通过 `Key=Value` 形式传递的参数封装成一个字典，在函数内部可以通过 `kwargs` 访问这些参数，`**kwargs` 使得函数能够灵活地接受不定数量的关键字参数，提升了代码的可扩展性。[官方文档](https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments)。_
@@ -39,9 +39,10 @@ _在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键�
 
   - [x] 自动的 [类型转换](#支持的内置类型自动转换)（传入类型和传出的类型不一致时）；
   - [x] 较小的开销，`Kwargs` 的内部会尽可能地使用 `constexpr`，将在 **编译期得到结果** （如果满足条件的话）；
+  - [x] 键名不区别大小写（_可选的_）；
 
 > [!TIP]
-> 推荐使用 C++ $20$，在 C++ $20$ 中，`STL` 更多的被声明为 `constexpr`，但最好不要低于 C++ $17$。
+> 推荐使用 C++ $20$，在 C++ $20$ 中，`STL` 更多的被声明为 `constexpr`，代码的 _编写_ 和 _测试_ 皆在 C++ $20$ 中完成。
 
 * 仅 _Python (**kwargs)_ 支持的：
 
@@ -138,34 +139,52 @@ _在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键�
 ### 应用在类的构造函数中
 
 ```cpp
-struct People
+struct Font
 {
-  std::string name;
-  int old;
-  float height;
+  std::string faceName;
+  int size;
+  float escapement;
+  bool italic;
 
   // Or Kwargs<> kwargs = {} without checking.
-  People(Kwargs<"name"_opt, "old"_opt, "height"_opt> kwargs = {})
-  {
-    this->name = kwargs["name"].valueOr<std::string>("MyName");
-
-    this->old = kwargs["old"].valueOr<int>(18);
-
-    this->height = kwargs["height"].valueOr<float>(1.75);
-  }
+  Font(Kwargs<
+    "faceName"_opt, /* Or */ "name"_opt,
+    "size"_opt,
+    "escapement"_opt,
+    "italic"_opt, /* Or */ "i"_opt> kwargs = {})
+      : faceName(kwargs["faceName"_opt or "name"].valueOr<std::string>())
+      , size(kwargs["size"].valueOr<int>(9))
+      , escapement(kwargs["escapement"].valueOr<float>(0.00f))
+      , italic(kwargs["italic"_opt or "i"].valueOr<bool>(false))
+  { }
 };
 ```
 
-以下构造 `People` 的方式都是有效的：
+以下构造 `Font` 的方式都是有效的：
 
-- `People()`
-- `People({ })`
-- `People({ {"name", "huanhuanonly"} })`
-- `People({ {"name"_opt, "huanhuanonly"} })`
-- `People({ {"old"_opt, 16} })`
-- `People({ {"old", 16ULL}, {"name", "huanhuanonly"} })`
-- `People({ {"height", 1.80} })`
-- `People({ {"height", 2} })`
+- `Font()`
+  - 同等于： `Font{ std::string(), 9, 0.00f, false }`
+
+- `Font({ })`
+  - 同等于： `Font{ std::string(), 9, 0.00f, false }`
+
+- `Font({ {"name", "Arial"}, {"italic", true} })`
+  - 同等于： `Font{ std::string("Arial"), 9, 0.00f, true }`
+
+- `Font({ {"italic", "true"}, {"name", "Arial"} })`
+  - 同等于： `Font{ std::string("Arial"), 9, 0.00f, true }`
+
+- `Font({ {"i", "True"}, {"faceName", "Arial"} })`
+  - 同等于： `Font{ std::string("Arial"), 9, 0.00f, true }`
+
+- `Font({ {"size", 18}, {"escapement", 45} })`
+  - 同等于： `Font{ std::string(), 18, 45.00f, false }`
+
+- `Font({ {"size", "18"}, {"escapement", "49.2"} })`
+  - 同等于： `Font{ std::string(), 18, 49.20f, false }`
+
+- `Font({ {"size", 18.8}, {"escapement", 49.2}, {"i", 't'} })`
+  - 同等于： `Font{ std::string(), 18, 49.20f, true }`
 
 <details>
 
@@ -226,15 +245,52 @@ struct People
 
 ## 导入到自己的项目中
 
-1. 在 [CppKwargs.h](https://github.com/huanhuanonly/cpp-kwargs/blob/main/CppKwargs.h) 中点击 **Download raw file** 下载；
-2. 将该文件移动到你的项目目录；
-3. 在项目源代码中包含以下代码：
-    ```cpp
-    #include "CppKwargs.h"
-    ```
+### 克隆该仓库
+```git
+clone https://github.com/huanhuanonly/cpp-kwargs.git
+```
+
+### 在 `CMakeList.txt` 中配置
+- CMakeList.txt
+```cmake
+set (CPP_KWARGS_REPOS "https://github.com/huanhuanonly/cpp-kwargs.git")
+set (CPP_KWARGS_PATH "${CMAKE_SOURCE_DIR}/cpp-kwargs")
+
+include (FetchContent)
+
+if (NOT EXISTS CPP_KWARGS_PATH)
+	FetchContent_Declare (
+        CppKwargs
+        GIT_REPOSITORY ${CPP_KWARGS_REPOS}
+        GIT_TAG main
+        GIT_SHALLOW TRUE
+        SOURCE_DIR ${CPP_KWARGS_PATH}
+    )
+
+    FetchContent_MakeAvailable (CppKwargs)
+endif()
+
+include_directories (${CPP_KWARGS_PATH})
+
+target_sources (YourExecutable PUBLIC "${CPP_KWARGS_PATH}/CppKwargs.h")
+```
+
+- main.cpp
+```cpp
+#include <CppKwargs.h>
+```
 
 > [!TIP]
 > 该项目只需要一个头文件即可运行。
+
+### 设置 `KwargsKey` 不区分大小写
+
+* 在首次 `#include "CppKwargs.h"` 前定义 `KWARGSKEY_CASE_INSENSITIVE`。
+
+* 或者,在你的项目中的 `CMakeList.txt` 文件中添加以下行：
+```cmake
+target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
+```
 
 ## 支持的内置类型自动转换
 
@@ -245,7 +301,8 @@ struct People
 - `const char*` / `std::string` / `std::string_view` $\longrightarrow$ `Integer` / `Floating point`。
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`。
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar`（取首字符，空则返回 `\0`）。
-- `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view`（`true` or `false`）.
+- `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view`（`true` or `false`）。
+- `"true"` $\longrightarrow$ `true`, `"false"` $\longrightarrow$ `false`。
 - 可迭代的容器（拥有 `.begin()`、`.end()` 和 _前向迭代器_） $\longrightarrow$ 可插入的容器（拥有 `.push_back()` / `.insert()` / `.push()` 或 `.append()`）。
 
 > [!NOTE]
