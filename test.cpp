@@ -215,6 +215,20 @@ static void _test_string_to_bool(Kwargs<"true"_opt, "false"_opt> kwargs)
     std::cout << kwargs["false"].valueOr<bool>() << '\n';
 }
 
+enum class Enum : std::uint32_t
+{
+    EnumA = 1,
+    EnumB,
+    EnumC
+};
+
+static void _test_to_enum(Kwargs<"enum"_opt> kwargs)
+{
+    _Test_Begin_
+
+    std::cout << static_cast<std::underlying_type_t<Enum>>(kwargs["enum"_opt].valueOr<Enum>()) << '\n';
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -260,6 +274,9 @@ int main(void)
 
     _test_string_to_bool({ {"true", "true"}, {"false", std::string("false")} });
     _test_string_to_bool({ {"true", "True"}, {"false", std::string_view("False")} });
+
+    _test_general({ {"name"_opt, Enum::EnumC}, {"old"_opt, Enum::EnumB} });
+    _test_to_enum({ {"enum", 1} });
 
     return 0;
 }
