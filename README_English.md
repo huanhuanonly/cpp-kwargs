@@ -23,7 +23,14 @@ _In Python, `**Kwargs` is used in function definitions to accept any number of k
 
 </div>
 
-## Application Comparison
+## Documentation
+
+- [Kwargs](./docs_English/Kwargs.md) | [Kwargs::DataItem](./docs_English/Kwargs_DataItem.md)
+- [KwargsKey](./docs_English/KwargsKey.md)
+- [KwargsValue](./docs_English/KwargsValue.md)
+- [operator""_opt](./docs_English/operator%20_opt.md)
+
+## [Features & Examples](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp)
 
 * _Python (**kwargs)_ and _cpp-kwargs_ both support:
 
@@ -150,9 +157,13 @@ struct Font
     "size"_opt,
     "escapement"_opt,
     "italic"_opt, /* Or */ "i"_opt> kwargs = {})
+
       : faceName(kwargs["faceName"_opt or "name"].valueOr<std::string>())
+
       , size(kwargs["size"].valueOr<int>(9))
+
       , escapement(kwargs["escapement"].valueOr<float>(0.00f))
+
       , italic(kwargs["italic"_opt or "i"].valueOr<bool>(false))
   { }
 };
@@ -245,10 +256,10 @@ For more usage examples, click [![EXAMPLES-MORE](https://img.shields.io/badge/EX
 
 ### Clone this repository
 ```git
-clone https://github.com/huanhuanonly/cpp-kwargs.git
+git clone https://github.com/huanhuanonly/cpp-kwargs.git
 ```
 
-### Configure in `CMakeList.txt`
+### Configure in _CMakeList.txt_
 - CMakeList.txt
 ```cmake
 set (CPP_KWARGS_REPOS "https://github.com/huanhuanonly/cpp-kwargs.git")
@@ -256,7 +267,7 @@ set (CPP_KWARGS_PATH "${CMAKE_SOURCE_DIR}/cpp-kwargs")
 
 include (FetchContent)
 
-if (NOT EXISTS CPP_KWARGS_PATH)
+if (NOT EXISTS ${CPP_KWARGS_PATH})
 	FetchContent_Declare (
         CppKwargs
         GIT_REPOSITORY ${CPP_KWARGS_REPOS}
@@ -269,8 +280,6 @@ if (NOT EXISTS CPP_KWARGS_PATH)
 endif()
 
 include_directories (${CPP_KWARGS_PATH})
-
-target_sources (YourExecutable PUBLIC "${CPP_KWARGS_PATH}/CppKwargs.h")
 ```
 
 - main.cpp
@@ -283,28 +292,61 @@ target_sources (YourExecutable PUBLIC "${CPP_KWARGS_PATH}/CppKwargs.h")
 
 ### Set `KwargsKey` to be case-insensitive
 
-* Define `KWARGSKEY_CASE_INSENSITIVE` before the first `#include "CppKwargs.h"`.
+* Define `KWARGSKEY_CASE_INSENSITIVE` before `#include "CppKwargs.h"`:
+  ```cpp
+  #ifndef KWARGSKEY_CASE_INSENSITIVE
+  #  define KWARGSKEY_CASE_INSENSITIVE
+  #endif
+  
+  #include "CppKwargs.h"
+  ```
 
-* Alternatively, add the following line to your project's CMakeList.txt file:
-```cmake
-target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
-```
+* Alternatively, add the following line to your project's _CMakeList.txt_ file:
+  ```cmake
+  target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
+  ```
 
 ## Supported Built-in Type Automatic Conversion
 
 - All integer and floating-point type conversions.
+
+- For all enumeration types `enum` is considered to be its **_underlying type_** (integer).
+
 - `std::string` $\longleftrightarrow$ `std::string_view`.
+
 - `std::string` / `std::string_view` $\longleftrightarrow$ `const char*`.
+
 - `std::vector<char>` / `std::array<char>` / `std::string_view` $\longrightarrow$ `const char*` (does not guarantee `\0` terminator).
+
 - `const char*` / `std::string` / `std::string_view` $\longrightarrow$ `Integer` / `Floating point`.
+
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`.
+
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar` (takes the first character, returns `\0` if empty).
-- `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view` (`true` or `false`).
-- `"true"` $\longrightarrow$ `true`, `"false"` $\longrightarrow$ `false`.
-- Iterable containers (with `.begin()`, `.end()`, and _forward-iterator_) $\longrightarrow$ Insertable containers (with `.push_back()` / `.insert()` / `.push()` or `.append()`).
+
+- `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view` (`"true"` or `"false"`).
+
+- `"true"` / `"True"` / `"TRUE"` / `'t'` / `'T'` $\longrightarrow$ `true`.
+
+- `"false"` / `"False"` / `"FALSE"` / `'f'` / `'F'` $\longrightarrow$ `false`.
+
+- Iterable containers (with `.begin()`, `.end()`, and _forward-iterator_) $\longrightarrow$ Insertable containers.
 
 > [!NOTE]
 > Both containers must have `::value_type`, but the value types don't need to match. If they don't, conversion will follow the above rules.
+
+<details open>
+  <summary><b><i>Insertable containers</i></b></summary>
+
+  Has one of the following member functions (_in order_):
+
+  1. `.append()`
+  2. `.push_back()`
+  3. `.push()`
+  4. `.insert()`
+  5. `.push_front()`
+
+</details>
 
 ---
 

@@ -10,7 +10,7 @@
 )](https://github.com/huanhuanonly/cpp-kwargs/tree/main/docs)
 
 
-**_cpp-kwargs 是一个能在 C++ 中实现 Python `**kwargs` 传参的库。_**
+**_cpp-kwargs 是一个能在 C++ 中实现类似于 Python `**kwargs` 传参的库。_**
 
 **_它通过 C++ 强大的模板编程封装了一个 [`Kwargs`](./docs/Kwargs.md) 类以此来实现了该功能。_**
 
@@ -25,7 +25,14 @@ _在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键�
 
 </div>
 
-## 应用对比
+## 文档
+
+- [Kwargs](./docs/Kwargs.md) | [Kwargs::DataItem](./docs/Kwargs_DataItem.md)
+- [KwargsKey](./docs/KwargsKey.md)
+- [KwargsValue](./docs/KwargsValue.md)
+- [operator""_opt](./docs/operator%20_opt.md)
+
+## [功能 & 示例](https://github.com/huanhuanonly/cpp-kwargs/blob/main/test.cpp)
 
 * _Python (**kwargs)_ 和 _cpp-kwargs_ 都支持的：
 
@@ -152,9 +159,13 @@ struct Font
     "size"_opt,
     "escapement"_opt,
     "italic"_opt, /* Or */ "i"_opt> kwargs = {})
+
       : faceName(kwargs["faceName"_opt or "name"].valueOr<std::string>())
+
       , size(kwargs["size"].valueOr<int>(9))
+
       , escapement(kwargs["escapement"].valueOr<float>(0.00f))
+      
       , italic(kwargs["italic"_opt or "i"].valueOr<bool>(false))
   { }
 };
@@ -247,10 +258,10 @@ struct Font
 
 ### 克隆该仓库
 ```git
-clone https://github.com/huanhuanonly/cpp-kwargs.git
+git clone https://github.com/huanhuanonly/cpp-kwargs.git
 ```
 
-### 在 `CMakeList.txt` 中配置
+### 在 _CMakeList.txt_ 中配置
 - CMakeList.txt
 ```cmake
 set (CPP_KWARGS_REPOS "https://github.com/huanhuanonly/cpp-kwargs.git")
@@ -258,7 +269,7 @@ set (CPP_KWARGS_PATH "${CMAKE_SOURCE_DIR}/cpp-kwargs")
 
 include (FetchContent)
 
-if (NOT EXISTS CPP_KWARGS_PATH)
+if (NOT EXISTS ${CPP_KWARGS_PATH})
 	FetchContent_Declare (
         CppKwargs
         GIT_REPOSITORY ${CPP_KWARGS_REPOS}
@@ -271,8 +282,6 @@ if (NOT EXISTS CPP_KWARGS_PATH)
 endif()
 
 include_directories (${CPP_KWARGS_PATH})
-
-target_sources (YourExecutable PUBLIC "${CPP_KWARGS_PATH}/CppKwargs.h")
 ```
 
 - main.cpp
@@ -285,28 +294,60 @@ target_sources (YourExecutable PUBLIC "${CPP_KWARGS_PATH}/CppKwargs.h")
 
 ### 设置 `KwargsKey` 不区分大小写
 
-* 在首次 `#include "CppKwargs.h"` 前定义 `KWARGSKEY_CASE_INSENSITIVE`。
+* 在 `#include "CppKwargs.h"` 前定义 `KWARGSKEY_CASE_INSENSITIVE`：
+  ```cpp
+  #ifndef KWARGSKEY_CASE_INSENSITIVE
+  #  define KWARGSKEY_CASE_INSENSITIVE
+  #endif
+  
+  #include "CppKwargs.h"
+  ```
 
-* 或者,在你的项目中的 `CMakeList.txt` 文件中添加以下行：
-```cmake
-target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
-```
+* 或者,在你的项目中的 _CMakeList.txt_ 文件中添加以下行：
+  ```cmake
+  target_compile_definitions (YourExecutable PRIVATE KWARGSKEY_CASE_INSENSITIVE)
+  ```
 
 ## 支持的内置类型自动转换
 
 - 所有的整型和浮点型之间的互相转换。
+
+- 对于所有枚举类型 `enum` 视为其底层类型（整型）。
+
 - `std::string` $\longleftrightarrow$ `std::string_view`。
+
 - `std::string` / `std::string_view` $\longleftrightarrow$ `const char*`。
+
 - `std::vector<char>` / `std::array<char>` / `std::string_view` $\longrightarrow$ `const char*`（并不保证有 `\0` 结束符）。
+
 - `const char*` / `std::string` / `std::string_view` $\longrightarrow$ `Integer` / `Floating point`。
+
 - `Integer` / `Floating point` $\longrightarrow$ `std::string`。
+
 - `const char*` / `std::string` / `std::string_view` $\longleftrightarrow$ `char` / `uchar`（取首字符，空则返回 `\0`）。
-- `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view`（`true` or `false`）。
-- `"true"` $\longrightarrow$ `true`, `"false"` $\longrightarrow$ `false`。
-- 可迭代的容器（拥有 `.begin()`、`.end()` 和 _前向迭代器_） $\longrightarrow$ 可插入的容器（拥有 `.push_back()` / `.insert()` / `.push()` 或 `.append()`）。
+
+- `bool` $\longrightarrow$ `const char*` / `std::string` / `std::string_view`（`"true"` or `"false"`）。
+
+- `"true"` / `"True"` / `"TRUE"` / `'t'` / `'T'` $\longrightarrow$ `true`。
+
+- `"false"` / `"False"` / `"FALSE"` / `'f'` / `'F'` $\longrightarrow$ `false`。
+
+- 可迭代的容器（拥有 `.begin()`、`.end()` 和 _前向迭代器_） $\longrightarrow$ 可插入的容器。
 
 > [!NOTE]
 > 两个容器必须都要包含 `::value_type` 类型，值类型不需要一致，不一致时将按照以上规则进行转换。
+
+<details open>
+  <summary><b><i>可插入的容器</i></b></summary>
+  拥有以下成员函数之一（按顺序）：
+
+  1. `.append()`
+  2. `.push_back()`
+  3. `.push()`
+  4. `.insert()`
+  5. `.push_front()`
+
+</details>
 
 ---
 
