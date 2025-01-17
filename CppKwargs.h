@@ -269,7 +269,7 @@ protected:
                     }
                     else
                     {
-                        *optr = ***iptr->second;
+                        *optr = static_cast<_S_valueTypeOf_t<type>>(***iptr->second);
                         ++**iptr->second;
                     }
                 }
@@ -1117,7 +1117,7 @@ public:
                 !(_S_isAnyOf_v<std::remove_cv_t<_Tp>, const char*, std::string, std::string_view>), _Tp>
         value() const noexcept
     {
-        if constexpr (_S_hasValueType_v<_Tp>/* && _S_isIterable_v<_Tp>*/)
+        if constexpr (_S_hasValueType_v<_Tp> && _S_isInsertableContainer_v<_Tp>)
         {
             if (not isSameType<_Tp>() && hasValueType() && isIterable())
             {
@@ -1323,7 +1323,15 @@ protected:
         std::void_t<decltype(std::declval<_Container>().push_front(std::declval<_ValueType>()))>>
             : std::true_type { };
 
-
+    template<typename _Container, typename _ValueType = _S_valueTypeOf_t<_Container>>
+    static constexpr inline bool _S_isInsertableContainer_v =
+        _S_hasValueType_v<_Container> && (
+        _S_hasAppendMFunction<_Container, _ValueType>::value ||
+        _S_hasPushBackMFunction<_Container, _ValueType>::value ||
+        _S_hasPushMFunction<_Container, _ValueType>::value ||
+        _S_hasInsertMFunction<_Container, _ValueType>::value ||
+        _S_hasInsertWithEndMFunction<_Container, _ValueType>::value ||
+        _S_hasPushFrontMFunction<_Container, _ValueType>::value);
 
     template<
         typename _Container,
