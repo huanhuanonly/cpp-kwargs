@@ -194,9 +194,9 @@ protected:
         DoCheckReal = 0b010'000,  /// [unused], int*
         DoCheckSign = 0b100'000,  /// [unused], int*
 
-        DoCheckIterable  = 0b001000'000, /// [unused], int*
-        DoCheckValueType = 0b010000'000, /// [unused], int*
-        DoCheckStdArray  = 0b100000'000  /// [unused], int*
+        DoCheckIterable  = 0b001'000'000, /// [unused], int*
+        DoCheckValueType = 0b010'000'000, /// [unused], int*
+        DoCheckStdArray  = 0b100'000'000  /// [unused], int*
     };
 
     [[nodiscard]]
@@ -206,7 +206,7 @@ protected:
     template<typename _Tp>
     static void _S_manage(WorkFlags __work, void* __inData, void* __outData)
     {
-        using type = std::remove_cv_t<std::remove_reference_t<_Tp>>;
+        using type = _S_enumBaseTypeOf_t<std::remove_cv_t<std::remove_reference_t<_Tp>>>;
 
         switch (__work)
         {
@@ -273,6 +273,7 @@ protected:
                         ++**iptr->second;
                     }
                 }
+
                 break;
             }
 
@@ -299,7 +300,7 @@ protected:
             {
                 int result = 0;
 
-                if ((__work & DoCheckInt) && std::is_integral_v<type>)
+                if ((__work & DoCheckInt) && _S_isIntegral_v<type>)
                 {
                     result |= DoCheckInt;
                 }
@@ -336,23 +337,44 @@ protected:
         }
     }
 
+    template<typename _Tp, typename... _Types>
+    static constexpr inline bool _S_isAnyOf_v = (std::is_same_v<_Tp, _Types> || ...);
+
+
+    template<typename _Tp>
+    static constexpr inline bool _S_isIntegral_v = std::is_integral_v<_Tp> || std::is_enum_v<_Tp>;
+
+
+    template<typename _Tp, typename = std::void_t<>>
+    struct _S_enumBaseTypeOf
+    { using type = _Tp; };
+    
+    template<typename _Tp>
+    struct _S_enumBaseTypeOf<_Tp, std::enable_if_t<std::is_enum_v<_Tp>>>
+    { using type = std::underlying_type_t<_Tp>; };
+    
+    template<typename _Tp>
+    using _S_enumBaseTypeOf_t = typename _S_enumBaseTypeOf<_Tp>::type;
+
+
     template<typename _Tp>
     static constexpr inline bool _S_useValueFlag_v =
-        std::is_integral_v<_Tp> ||
+        (_S_isIntegral_v<_Tp> ||
         std::is_pointer_v<_Tp> ||
-        std::is_floating_point_v<_Tp> &&
+        std::is_floating_point_v<_Tp>) &&
         sizeof(_Tp) <= sizeof(void*);
+
 
     template<typename _Tp, typename = std::void_t<>>
     struct _S_valueTypeOf
     { using type = _Tp; };
 
     template<typename _Tp>
-    struct _S_valueTypeOf<_Tp, std::void_t<typename _Tp::value_type>>
+    struct _S_valueTypeOf<_Tp, std::void_t<typename std::remove_reference_t<_Tp>::value_type>>
     { using type =  typename _Tp::value_type; };
 
     template<typename _Tp>
-    using _S_valueTypeOf_t = _S_valueTypeOf<_Tp>::type;
+    using _S_valueTypeOf_t = typename _S_valueTypeOf<_Tp>::type;
 
 
     template<typename _Tp, typename = std::void_t<>>
@@ -549,7 +571,7 @@ public:
     template<typename _Tp>
     [[nodiscard]]
     constexpr bool isSameType() const noexcept
-    { return typeid(std::remove_cv_t<std::remove_reference_t<_Tp>>).hash_code() == typeHashCode(); }
+    { return typeid(_S_enumBaseTypeOf_t<std::remove_cv_t<std::remove_reference_t<_Tp>>>).hash_code() == typeHashCode(); }
 
     [[nodiscard]]
     constexpr bool isInteger() const noexcept
@@ -595,7 +617,7 @@ public:
     template<typename _Tp>
     [[nodiscard]]
     constexpr std::enable_if_t<
-            std::is_same_v<std::remove_volatile_t<_Tp>, const char*>, _Tp>
+            std::is_same_v<std::remove_cv_t<_Tp>, const char*>, _Tp>
         value() const noexcept
     {
         if (_M_flags == StringLiteralFlag)
@@ -782,9 +804,7 @@ public:
     template<typename _Tp>
     [[nodiscard]]
     constexpr std::enable_if_t<
-            std::is_same_v<std::remove_cv_t<_Tp>, char> ||
-            std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
-            std::is_same_v<std::remove_cv_t<_Tp>, unsigned char>, _Tp>
+            _S_isAnyOf_v<std::remove_cv_t<_Tp>, char, signed char, unsigned char>, _Tp>
         value() const noexcept
     {
         std::size_t hashCode = typeHashCode();
@@ -831,15 +851,13 @@ public:
     template<typename _Tp>
     [[nodiscard]]
     constexpr std::enable_if_t<
-            std::is_integral_v<std::remove_cv_t<_Tp>> &&
-                !(std::is_same_v<std::remove_cv_t<_Tp>, char> ||
-                std::is_same_v<std::remove_cv_t<_Tp>, signed char> ||
-                std::is_same_v<std::remove_cv_t<_Tp>, unsigned char>), _Tp>
+            _S_isIntegral_v<std::remove_cv_t<_Tp>> &&
+                !(_S_isAnyOf_v<std::remove_cv_t<_Tp>, char, signed char, unsigned char>), _Tp>
         value() const noexcept
     {
         std::size_t hashCode = typeHashCode();
 
-        if (typeid(std::remove_cv_t<std::remove_reference_t<_Tp>>).hash_code() == hashCode)
+        if (typeid(_S_enumBaseTypeOf_t<std::remove_cv_t<std::remove_reference_t<_Tp>>>).hash_code() == hashCode)
         {
             if (_M_flags == ValueFlag) [[likely]]
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
@@ -855,7 +873,7 @@ public:
             {
                 if (typeid(bool).hash_code() == hashCode)
                 {
-                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1 : 0;
+                    return static_cast<_Tp>(static_cast<bool>(_M_data._M_bytes[0]) ? 1 : 0);
                 }
 
                 if (is & DoCheckSign)
@@ -898,19 +916,19 @@ public:
         if (_M_flags == StringLiteralFlag)
         {
             if (reinterpret_cast<const char*>(_M_data._M_ptr) == nullptr)
-                return 0;
+                return static_cast<_Tp>(0);
             else if (KwargsKey::_S_tolower(reinterpret_cast<const char*>(_M_data._M_ptr)[0]) == 't')
-                return true;
+                return static_cast<_Tp>(true);
             else if (KwargsKey::_S_tolower(reinterpret_cast<const char*>(_M_data._M_ptr)[0]) == 'f')
-                return false;
+                return static_cast<_Tp>(false);
 
             char* endptr;
 
-            if constexpr (std::is_signed_v<_Tp>)
+            if constexpr (std::is_signed_v<_S_enumBaseTypeOf_t<_Tp>>)
                 return static_cast<_Tp>(
                     std::strtoll(reinterpret_cast<const char*>(_M_data._M_ptr), &endptr, 10));
 
-            else if constexpr (std::is_unsigned_v<_Tp>)
+            else if constexpr (std::is_unsigned_v<_S_enumBaseTypeOf_t<_Tp>>)
                 return static_cast<_Tp>(
                     std::strtoull(reinterpret_cast<const char*>(_M_data._M_ptr), &endptr, 10));
         } else
@@ -919,17 +937,17 @@ public:
         if (typeid(std::string).hash_code() == hashCode)
         {
             if (KwargsKey::_S_tolower((*reinterpret_cast<const std::string*>(_M_data._M_ptr)).front()) == 't')
-                return true;
+                return static_cast<_Tp>(true);
             else if (KwargsKey::_S_tolower((*reinterpret_cast<const std::string*>(_M_data._M_ptr)).front()) == 'f')
-                return false;
+                return static_cast<_Tp>(false);
 
             try
             {
-                if constexpr (std::is_signed_v<_Tp>)
+                if constexpr (std::is_signed_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(
                         std::stoll(*reinterpret_cast<const std::string*>(_M_data._M_ptr)));
 
-                else if constexpr (std::is_unsigned_v<_Tp>)
+                else if constexpr (std::is_unsigned_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(
                         std::stoull(*reinterpret_cast<const std::string*>(_M_data._M_ptr)));
             }
@@ -949,30 +967,30 @@ public:
             
             if (sv->empty())
             {
-                return 0;
+                return static_cast<_Tp>(0);
             }
             else if (KwargsKey::_S_tolower(sv->front()) == 't')
             {
-                return true;
+                return static_cast<_Tp>(true);
             }
             else if (KwargsKey::_S_tolower(sv->front()) == 'f')
             {
-                return false;
+                return static_cast<_Tp>(false);
             }
             else if (sv->back() == '\0')
             {
-                if constexpr (std::is_signed_v<_Tp>)
+                if constexpr (std::is_signed_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(std::strtoll(sv->data(), &endptr, 10));
 
-                else if constexpr (std::is_unsigned_v<_Tp>)
+                else if constexpr (std::is_unsigned_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(std::strtoull(sv->data(), &endptr, 10));
             }
             else
             {
-                if constexpr (std::is_signed_v<_Tp>)
+                if constexpr (std::is_signed_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(std::stoll(std::string(sv->data(), sv->size())));
 
-                else if constexpr (std::is_unsigned_v<_Tp>)
+                else if constexpr (std::is_unsigned_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(std::stoull(std::string(sv->data(), sv->size())));
             }
         }
@@ -1004,7 +1022,7 @@ public:
             {
                 if (typeid(bool).hash_code() == hashCode)
                 {
-                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1.00 : 0.00;
+                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1.00f : 0.00f;
                 }
 
                 if (is & DoCheckSign)
@@ -1096,9 +1114,7 @@ public:
     [[nodiscard]]
     constexpr std::enable_if_t<
             (std::is_class_v<_Tp> || std::is_union_v<_Tp> || std::is_pointer_v<_Tp>) &&
-                !(std::is_same_v<std::remove_volatile_t<_Tp>, const char*> ||
-                std::is_same_v<std::remove_cv_t<_Tp>, std::string> ||
-                std::is_same_v<std::remove_cv_t<_Tp>, std::string_view>), _Tp>
+                !(_S_isAnyOf_v<std::remove_cv_t<_Tp>, const char*, std::string, std::string_view>), _Tp>
         value() const noexcept
     {
         if constexpr (_S_hasValueType_v<_Tp>/* && _S_isIterable_v<_Tp>*/)
@@ -1235,39 +1251,7 @@ protected:
         return result;
     }
 
-    
-    template<typename _Container, typename _ValueType, typename = std::void_t<>>
-    struct _S_hasPushBackMFunction : std::false_type { };
-
-    template<typename _Container, typename _ValueType>
-    struct _S_hasPushBackMFunction<
-        _Container,
-        _ValueType,
-        std::void_t<decltype(std::declval<_Container>().push_back(std::declval<_ValueType>()))>>
-            : std::true_type { };
-
-
-    template<typename _Container, typename _ValueType, typename = std::void_t<>>
-    struct _S_hasInsertMFunction : std::false_type { };
-
-    template<typename _Container, typename _ValueType>
-    struct _S_hasInsertMFunction<
-        _Container,
-        _ValueType,
-        std::void_t<decltype(std::declval<_Container>().insert(std::declval<_ValueType>()))>>
-            : std::true_type { };
-
-
-    template<typename _Container, typename _ValueType, typename = std::void_t<>>
-    struct _S_hasPushMFunction : std::false_type { };
-
-    template<typename _Container, typename _ValueType>
-    struct _S_hasPushMFunction<
-        _Container,
-        _ValueType,
-        std::void_t<decltype(std::declval<_Container>().push(std::declval<_ValueType>()))>>
-            : std::true_type { };
-
+    /// .append()
 
     template<typename _Container, typename _ValueType, typename = std::void_t<>>
     struct _S_hasAppendMFunction : std::false_type { };
@@ -1279,11 +1263,84 @@ protected:
         std::void_t<decltype(std::declval<_Container>().append(std::declval<_ValueType>()))>>
             : std::true_type { };
 
+    /// .push_back()
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasPushBackMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasPushBackMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().push_back(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+    /// .push()
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasPushMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasPushMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().push(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+    /// .insert()
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasInsertMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasInsertMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().insert(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+    /// .insert(.end(), element)
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasInsertWithEndMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasInsertWithEndMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().insert(std::declval<typename _Container::iterator>(), std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+    /// .push_front()
+
+    template<typename _Container, typename _ValueType, typename = std::void_t<>>
+    struct _S_hasPushFrontMFunction : std::false_type { };
+
+    template<typename _Container, typename _ValueType>
+    struct _S_hasPushFrontMFunction<
+        _Container,
+        _ValueType,
+        std::void_t<decltype(std::declval<_Container>().push_front(std::declval<_ValueType>()))>>
+            : std::true_type { };
+
+
 
     template<
         typename _Container,
         typename _ValueType,
-        std::enable_if_t<_S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
+        std::enable_if_t<
+            _S_hasAppendMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.append(std::forward<_ValueType>(__element)); }
+
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<
+            _S_hasPushBackMFunction<_Container, _ValueType>::value &&
+        not _S_hasAppendMFunction<_Container, _ValueType>::value, int> = 0>
     static constexpr inline
         void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
     { __container.push_back(std::forward<_ValueType>(__element)); }
@@ -1292,18 +1349,8 @@ protected:
         typename _Container,
         typename _ValueType,
         std::enable_if_t<
-            _S_hasInsertMFunction<_Container, _ValueType>::value &&
-        not _S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
-    static constexpr inline
-        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
-    { __container.insert(std::forward<_ValueType>(__element)); }
-
-    template<
-        typename _Container,
-        typename _ValueType,
-        std::enable_if_t<
             _S_hasPushMFunction<_Container, _ValueType>::value &&
-        not _S_hasInsertMFunction<_Container, _ValueType>::value &&
+        not _S_hasAppendMFunction<_Container, _ValueType>::value &&
         not _S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
     static constexpr inline
         void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
@@ -1313,13 +1360,40 @@ protected:
         typename _Container,
         typename _ValueType,
         std::enable_if_t<
-            _S_hasAppendMFunction<_Container, _ValueType>::value &&
-        not _S_hasPushMFunction<_Container, _ValueType>::value &&
-        not _S_hasInsertMFunction<_Container, _ValueType>::value &&
-        not _S_hasPushBackMFunction<_Container, _ValueType>::value, int> = 0>
+            _S_hasInsertMFunction<_Container, _ValueType>::value &&
+        not _S_hasAppendMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushBackMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushMFunction<_Container, _ValueType>::value, int> = 0>
     static constexpr inline
         void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
-    { __container.append(std::forward<_ValueType>(__element)); }
+    { __container.insert(std::forward<_ValueType>(__element)); }
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<
+            _S_hasInsertWithEndMFunction<_Container, _ValueType>::value &&
+        not _S_hasAppendMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushBackMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushMFunction<_Container, _ValueType>::value &&
+        not _S_hasInsertMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.insert(__container.end(), std::forward<_ValueType>(__element)); }
+
+    template<
+        typename _Container,
+        typename _ValueType,
+        std::enable_if_t<
+            _S_hasPushFrontMFunction<_Container, _ValueType>::value &&
+        not _S_hasAppendMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushBackMFunction<_Container, _ValueType>::value &&
+        not _S_hasPushMFunction<_Container, _ValueType>::value &&
+        not _S_hasInsertMFunction<_Container, _ValueType>::value &&
+        not _S_hasInsertWithEndMFunction<_Container, _ValueType>::value, int> = 0>
+    static constexpr inline
+        void _S_insertToEnd(_Container& __container, _ValueType&& __element) noexcept
+    { __container.push_front(std::forward<_ValueType>(__element)); }
 
 private:
     
