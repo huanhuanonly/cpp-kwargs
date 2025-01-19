@@ -190,13 +190,14 @@ protected:
         DoIterate,                /// std::pair<this, iterator**>, value_type*
         DoIterateAny,             /// std::pair<this, iterator**>, KwargsValue*
 
-        DoCheckInt  = 0b001'000,  /// [unused], int*
-        DoCheckReal = 0b010'000,  /// [unused], int*
-        DoCheckSign = 0b100'000,  /// [unused], int*
+        DoCheckInt  = 0b0001'000,  /// [unused], int*
+        DoCheckReal = 0b0010'000,  /// [unused], int*
+        DoCheckSign = 0b0100'000,  /// [unused], int*
+        DoCheckEnum = 0b1000'000,
 
-        DoCheckIterable  = 0b001'000'000, /// [unused], int*
-        DoCheckValueType = 0b010'000'000, /// [unused], int*
-        DoCheckStdArray  = 0b100'000'000  /// [unused], int*
+        DoCheckIterable  = 0b001'0000'000, /// [unused], int*
+        DoCheckValueType = 0b010'0000'000, /// [unused], int*
+        DoCheckStdArray  = 0b100'0000'000  /// [unused], int*
     };
 
     [[nodiscard]]
@@ -313,6 +314,11 @@ protected:
                 if ((__work & DoCheckSign) && std::is_signed_v<type>)
                 {
                     result |= DoCheckSign;
+                }
+
+                if ((__work & DoCheckEnum) && std::is_enum_v<std::remove_cv_t<std::remove_reference_t<_Tp>>>)
+                {
+                    result |= DoCheckEnum;
                 }
 
                 
@@ -611,6 +617,72 @@ public:
 
     template<typename _Tp>
     [[nodiscard]]
+    constexpr _Tp* pointer() noexcept
+    {
+        switch (_M_flags)
+        {
+            case PointerFlag:
+            case AppliedFlag:
+                
+                return reinterpret_cast<_Tp*>(_M_data._M_ptr);
+
+            case StringLiteralFlag:
+
+                return reinterpret_cast<const _Tp*>(_M_data._M_bytes);
+
+            case ValueFlag:
+
+                return reinterpret_cast<_Tp*>(&_M_data._M_value);
+
+            [[unlikely]]
+            default:
+                
+                assert(false);
+                return nullptr;
+        }
+    }
+
+    template<typename _Tp>
+    [[nodiscard]]
+    constexpr const _Tp* pointer() const noexcept
+    {
+        switch (_M_flags)
+        {
+            case PointerFlag:
+            case AppliedFlag:
+                
+                return reinterpret_cast<const _Tp*>(_M_data._M_ptr);
+
+            case StringLiteralFlag:
+
+                return reinterpret_cast<const _Tp*>(_M_data._M_bytes);
+
+            case ValueFlag:
+
+                return reinterpret_cast<const _Tp*>(&_M_data._M_value);
+
+            [[unlikely]]
+            default:
+                
+                assert(false);
+                return nullptr;
+        }
+    }
+
+
+    template<typename _Tp>
+    [[nodiscard]]
+    constexpr _Tp& reference() noexcept
+    { return *pointer<_Tp>(); }
+
+    template<typename _Tp>
+    [[nodiscard]]
+    constexpr const _Tp& reference() const noexcept
+    { return *pointer<_Tp>(); }
+
+
+    template<typename _Tp>
+    [[nodiscard]]
     constexpr operator _Tp() const noexcept
     { return value<_Tp>(); }
 
@@ -622,7 +694,7 @@ public:
     {
         if (_M_flags == StringLiteralFlag)
         {
-            return reinterpret_cast<const char*>(_M_data._M_ptr);
+            return reference<const char*>();
         }
         
         std::size_t hashCode = typeHashCode();
@@ -630,13 +702,13 @@ public:
         /// std::string -> const char*
         if (typeid(std::string).hash_code() == hashCode)
         {
-            return reinterpret_cast<std::string*>(_M_data._M_ptr)->c_str();
+            return pointer<std::string>()->c_str();
         } else
 
         /// std::string_view -> const char*
         if (typeid(std::string_view).hash_code() == hashCode)
         {
-            return reinterpret_cast<std::string_view*>(_M_data._M_ptr)->data();
+            return pointer<std::string_view>()->data();
         } else
 
         /// bool -> const char*
@@ -656,7 +728,7 @@ public:
         /// std::vector<char> -> const char*
         if (typeid(std::vector<char>).hash_code() == hashCode)
         {
-            return reinterpret_cast<std::vector<char>*>(_M_data._M_ptr)->data();
+            return pointer<std::vector<char>>()->data();
         } else
 
         /// std::array<char, ...> -> const char*
@@ -666,12 +738,12 @@ public:
                     typeid(signed char).hash_code() == hashCode ||
                     typeid(unsigned char).hash_code() == hashCode))
         {
-            return reinterpret_cast<std::array<char, 1>*>(_M_data._M_ptr)->data();
+            return pointer<std::array<char, 1>>()->data();
         }
 
         assert(false && "Incorrect conversion.");
 
-        const char* nullstr = "";
+        static const char* nullstr = "";
         return nullstr;
     }
 
@@ -685,71 +757,67 @@ public:
 
         if (typeid(std::string).hash_code() == hashCode)
         {
-            return *reinterpret_cast<_Tp*>(_M_data._M_ptr);
+            return reference<_Tp>();
         } else
 
         /// const char* -> std::string
         if (_M_flags == StringLiteralFlag)
         {
-            return std::string(reinterpret_cast<const char*>(_M_data._M_ptr), _M_size);
+            return std::string(reference<const char*>(), _M_size);
         } else
 
         /// std::string_view -> std::string
         if (isSameType<std::string_view>())
         {
-            std::string_view* ptr = reinterpret_cast<std::string_view*>(_M_data._M_ptr);
+            const std::string_view* ptr = pointer<std::string_view>();
             return std::string(ptr->data(), ptr->size());
         } else
 
         /// Integer or floating point -> std::string
-        if (int is; _M_manager(DoCheckInt | DoCheckReal | DoCheckSign, nullptr, &is), is)
+        if (int is; _M_manager(DoCheckInt | DoCheckReal | DoCheckSign | DoCheckEnum, nullptr, &is), is)
         {
-            if (_M_flags == ValueFlag)
+            if (is & DoCheckInt)
             {
-                if (is & DoCheckInt)
+                if (_M_size == sizeof(char) && !(is & DoCheckEnum))
                 {
-                    if (_M_size == sizeof(char))
+                    if (typeid(char).hash_code() == hashCode ||
+                        typeid(signed char).hash_code() == hashCode ||
+                        typeid(unsigned char).hash_code() == hashCode)
                     {
-                        if (typeid(char).hash_code() == hashCode ||
-                            typeid(signed char).hash_code() == hashCode ||
-                            typeid(unsigned char).hash_code() == hashCode)
-                        {
-                            return std::string(1, static_cast<char>(_M_data._M_bytes[0]));
-                        }
-                        else // if (typeid(bool).hash_code() == hashCode)
-                        {
-                            return std::string(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
-                        }
+                        return std::string(1, static_cast<char>(_M_data._M_bytes[0]));
                     }
+                    else // if (typeid(bool).hash_code() == hashCode)
+                    {
+                        return std::string(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
+                    }
+                }
 
-                    if (is & DoCheckSign)
-                    {
-                        if (_M_size == sizeof(std::int16_t))
-                            return std::to_string(*reinterpret_cast<const std::int16_t*>(&_M_data._M_value));
-                        else if (_M_size == sizeof(std::int32_t))
-                            return std::to_string(*reinterpret_cast<const std::int32_t*>(&_M_data._M_value));
-                        else if (_M_size == sizeof(std::int64_t))
-                            return std::to_string(*reinterpret_cast<const std::int64_t*>(&_M_data._M_value));
-                    }
-                    else
-                    {
-                        return std::to_string(*reinterpret_cast<const std::uint64_t*>(&_M_data._M_value));
-                    }
+                if (is & DoCheckSign)
+                {
+                    if (_M_size == sizeof(std::int8_t))
+                        return std::to_string(reference<std::int8_t>());
+                    else if (_M_size == sizeof(std::int16_t))
+                        return std::to_string(reference<std::int16_t>());
+                    else if (_M_size == sizeof(std::int32_t))
+                        return std::to_string(reference<std::int32_t>());
+                    else // if (_M_size == sizeof(std::int64_t))
+                        return std::to_string(reference<std::int64_t>());
+                 // else if (_M_size == sizeof(std::int128_t))
+                 //     return std::to_string(reference<std::int128_t>());
                 }
                 else
                 {
-                    if (_M_size == sizeof(float))
-                        return std::to_string(*reinterpret_cast<const float*>(&_M_data._M_value));
-                    else if (_M_size == sizeof(double))
-                        return std::to_string(*reinterpret_cast<const double*>(&_M_data._M_value));
+                    return std::to_string(reference<std::uint64_t>());
                 }
             }
-            /// Types longer than 8 bytes
-            else // if (_M_flag == PointerFlag || _M_flag == AppliedFlag)
+            else
             {
-                /// @todo int128 or uint128.
-                if constexpr (sizeof(long double) > sizeof(void*))
-                    return std::to_string(*reinterpret_cast<long double*>(_M_data._M_ptr));
+                if (_M_size == sizeof(float))
+                    return std::to_string(reference<float>());
+                else if (_M_size == sizeof(double))
+                    return std::to_string(reference<double>());
+                else if (_M_size == sizeof(long double))
+                    return std::to_string(reference<long double>());
             }
         }
 
@@ -767,20 +835,20 @@ public:
 
         if (typeid(std::string_view).hash_code() == hashCode)
         {
-            return *reinterpret_cast<std::string_view*>(_M_data._M_ptr);
+            return reference<std::string_view>();
         }
 
         /// std::string -> std::string_view
         if (typeid(std::string).hash_code() == hashCode)
         {
-            const std::string* ptr = reinterpret_cast<const std::string*>(_M_data._M_ptr);
+            const std::string* ptr = pointer<std::string>();
             return std::string_view(ptr->data(), ptr->size());
         } else
 
         /// const char* -> std::string_view
         if (_M_flags == StringLiteralFlag)
         {
-            return std::string_view(reinterpret_cast<const char*>(_M_data._M_ptr), _M_size);
+            return std::string_view(reference<const char*>(), _M_size);
         } else
 
         /// bool -> std::string_view
@@ -818,7 +886,7 @@ public:
         if (_M_flags == StringLiteralFlag)
         {
             if (_M_size)
-                return static_cast<_Tp>(reinterpret_cast<const char*>(_M_data._M_ptr)[0]);
+                return static_cast<_Tp>(reference<const char*>()[0]);
             else
                 return '\0';
         } else
@@ -826,7 +894,7 @@ public:
         /// std::string -> char or uchar
         if (typeid(std::string).hash_code() == hashCode)
         {
-            const std::string* strptr = reinterpret_cast<const std::string*>(_M_data._M_ptr);
+            const std::string* strptr = pointer<std::string>();
 
             if (strptr->size())
                 return static_cast<_Tp>(strptr->front());
@@ -837,7 +905,7 @@ public:
         /// std::string_view -> char or uchar
         if (typeid(std::string_view).hash_code() == hashCode)
         {
-            const std::string_view* strptr = reinterpret_cast<const std::string_view*>(_M_data._M_ptr);
+            const std::string_view* strptr = pointer<std::string_view>();
 
             if (strptr->size())
                 return static_cast<_Tp>(strptr->front());
@@ -859,6 +927,8 @@ public:
 
         if (typeid(_S_enumBaseTypeOf_t<std::remove_cv_t<std::remove_reference_t<_Tp>>>).hash_code() == hashCode)
         {
+            // return reference<_Tp>();
+
             if (_M_flags == ValueFlag) [[likely]]
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
 
@@ -879,35 +949,32 @@ public:
                 if (is & DoCheckSign)
                 {
                     if (_M_size == sizeof(std::int8_t))
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int8_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int8_t>());
 
                     else if (_M_size == sizeof(std::int16_t)) [[unlikely]]
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int16_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int16_t>());
 
                     else if (_M_size == sizeof(std::int32_t)) [[likely]]
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int32_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int32_t>());
 
                     else // if (_M_size == sizeof(std::int64_t))
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int64_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int64_t>());
                 }
                 else
                 {
-                    return static_cast<_Tp>(*reinterpret_cast<const std::uint64_t*>(&_M_data._M_value));
+                    return static_cast<_Tp>(reference<std::uint64_t>());
                 }
             }
             else // if (is & DoCheckReal)
             {
                 if (_M_size == sizeof(float))
-                    return static_cast<_Tp>(*reinterpret_cast<const float*>(&_M_data._M_value));
+                    return static_cast<_Tp>(reference<float>());
 
                 else if (_M_size == sizeof(double))
-                    return static_cast<_Tp>(*reinterpret_cast<const double*>(&_M_data._M_value));
+                    return static_cast<_Tp>(reference<double>());
 
                 else // if (_M_size == sizeof(long double))
-                    if constexpr (sizeof(long double) <= 8)
-                        return static_cast<_Tp>(*reinterpret_cast<const long double*>(&_M_data._M_value));
-                    else
-                        return static_cast<_Tp>(*reinterpret_cast<const long double*>(_M_data._M_ptr));
+                    return static_cast<_Tp>(reference<long double>());
             }
 
         } else
@@ -915,41 +982,41 @@ public:
         /// const char* -> integer
         if (_M_flags == StringLiteralFlag)
         {
-            if (reinterpret_cast<const char*>(_M_data._M_ptr) == nullptr)
+            if (reference<const char*>() == nullptr)
                 return static_cast<_Tp>(0);
-            else if (KwargsKey::_S_tolower(reinterpret_cast<const char*>(_M_data._M_ptr)[0]) == 't')
+            else if (KwargsKey::_S_tolower(reference<const char*>()[0]) == 't')
                 return static_cast<_Tp>(true);
-            else if (KwargsKey::_S_tolower(reinterpret_cast<const char*>(_M_data._M_ptr)[0]) == 'f')
+            else if (KwargsKey::_S_tolower(reference<const char*>()[0]) == 'f')
                 return static_cast<_Tp>(false);
 
             char* endptr;
 
             if constexpr (std::is_signed_v<_S_enumBaseTypeOf_t<_Tp>>)
                 return static_cast<_Tp>(
-                    std::strtoll(reinterpret_cast<const char*>(_M_data._M_ptr), &endptr, 10));
+                    std::strtoll(reference<const char*>(), &endptr, 10));
 
             else if constexpr (std::is_unsigned_v<_S_enumBaseTypeOf_t<_Tp>>)
                 return static_cast<_Tp>(
-                    std::strtoull(reinterpret_cast<const char*>(_M_data._M_ptr), &endptr, 10));
+                    std::strtoull(reference<const char*>(), &endptr, 10));
         } else
 
         /// std::string -> integer
         if (typeid(std::string).hash_code() == hashCode)
         {
-            if (KwargsKey::_S_tolower((*reinterpret_cast<const std::string*>(_M_data._M_ptr)).front()) == 't')
+            if (KwargsKey::_S_tolower((reference<std::string>()).front()) == 't')
                 return static_cast<_Tp>(true);
-            else if (KwargsKey::_S_tolower((*reinterpret_cast<const std::string*>(_M_data._M_ptr)).front()) == 'f')
+            else if (KwargsKey::_S_tolower((reference<std::string>()).front()) == 'f')
                 return static_cast<_Tp>(false);
 
             try
             {
                 if constexpr (std::is_signed_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(
-                        std::stoll(*reinterpret_cast<const std::string*>(_M_data._M_ptr)));
+                        std::stoll(reference<std::string>()));
 
                 else if constexpr (std::is_unsigned_v<_S_enumBaseTypeOf_t<_Tp>>)
                     return static_cast<_Tp>(
-                        std::stoull(*reinterpret_cast<const std::string*>(_M_data._M_ptr)));
+                        std::stoull(reference<std::string>()));
             }
             catch (...)
             {
@@ -963,7 +1030,7 @@ public:
         {
             char* endptr;
 
-            const std::string_view* sv = reinterpret_cast<const std::string_view*>(_M_data._M_ptr);
+            const std::string_view* sv = pointer<std::string_view>();
             
             if (sv->empty())
             {
@@ -1008,6 +1075,8 @@ public:
 
         if (typeid(std::remove_cv_t<std::remove_reference_t<_Tp>>).hash_code() == hashCode)
         {
+            // return reference<_Tp>();
+
             if (_M_flags == ValueFlag) [[likely]]
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
             
@@ -1028,35 +1097,32 @@ public:
                 if (is & DoCheckSign)
                 {
                     if (_M_size == sizeof(std::int8_t))
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int8_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int8_t>());
 
                     else if (_M_size == sizeof(std::int16_t)) [[unlikely]]
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int16_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int16_t>());
 
                     else if (_M_size == sizeof(std::int32_t)) [[likely]]
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int32_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int32_t>());
 
                     else // if (_M_size == sizeof(std::int64_t))
-                        return static_cast<_Tp>(*reinterpret_cast<const std::int64_t*>(&_M_data._M_value));
+                        return static_cast<_Tp>(reference<std::int64_t>());
                 }
                 else
                 {
-                    return static_cast<_Tp>(*reinterpret_cast<const std::uint64_t*>(&_M_data._M_value));
+                    return static_cast<_Tp>(reference<std::uint64_t>());
                 }
             }
             else // if (is & DoCheckReal)
             {
                 if (_M_size == sizeof(float))
-                    return static_cast<_Tp>(*reinterpret_cast<const float*>(&_M_data._M_value));
+                    return static_cast<_Tp>(reference<float>());
 
                 else if (_M_size == sizeof(double))
-                    return static_cast<_Tp>(*reinterpret_cast<const double*>(&_M_data._M_value));
+                    return static_cast<_Tp>(reference<double>());
 
                 else // if (_M_size == sizeof(long double))
-                    if constexpr (sizeof(long double) <= 8)
-                        return static_cast<_Tp>(*reinterpret_cast<const long double*>(&_M_data._M_value));
-                    else
-                        return static_cast<_Tp>(*reinterpret_cast<const long double*>(_M_data._M_ptr));
+                    return static_cast<_Tp>(reference<long double>());
             }
 
         } else
@@ -1067,7 +1133,7 @@ public:
             char* endptr;
 
             return static_cast<_Tp>(
-                std::strtold(reinterpret_cast<const char*>(_M_data._M_ptr), &endptr));
+                std::strtold(reference<const char*>(), &endptr));
         } else
 
         /// std::string -> floating point
@@ -1075,8 +1141,7 @@ public:
         {
             try
             {
-                return static_cast<_Tp>(
-                    std::stold(*reinterpret_cast<const std::string*>(_M_data._M_ptr)));
+                return static_cast<_Tp>(std::stold(reference<std::string>()));
             }
             catch (...)
             {
@@ -1090,7 +1155,7 @@ public:
         {
             char* endptr;
 
-            const std::string_view* sv = reinterpret_cast<const std::string_view*>(_M_data._M_ptr);
+            const std::string_view* sv = pointer<std::string_view>();
             
             if (sv->empty())
             {
