@@ -421,25 +421,25 @@ protected:
     using _S_iterator_t = _S_iterator<_Tp>::type;
 
     template<typename _Tp>
-    constexpr inline [[nodiscard]]
+    [[nodiscard]] constexpr inline
         typename std::enable_if_t<_S_isIterable_v<_Tp>, typename _Tp::iterator>
             _M_getBeginIterator() const noexcept
     { return reinterpret_cast<_Tp*>(_M_data._M_ptr)->begin(); }
 
     template<typename _Tp>
-    constexpr inline [[nodiscard]]
+    [[nodiscard]] constexpr inline
         typename typename std::enable_if_t<not _S_isIterable_v<_Tp>, typename std::byte*>
             _M_getBeginIterator() const noexcept
     { return nullptr; }
 
     template<typename _Tp>
-    constexpr inline [[nodiscard]]
+    [[nodiscard]] constexpr inline
         typename std::enable_if_t<_S_isIterable_v<_Tp>, typename _Tp::iterator>
             _M_getEndIterator() const noexcept
     { return reinterpret_cast<_Tp*>(_M_data._M_ptr)->end(); }
 
     template<typename _Tp>
-    constexpr inline [[nodiscard]]
+    [[nodiscard]] constexpr inline
         typename typename std::enable_if_t<not _S_isIterable_v<_Tp>, typename std::byte*>
             _M_getEndIterator() const noexcept
     { return nullptr; }
