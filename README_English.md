@@ -312,6 +312,9 @@ include_directories (${CPP_KWARGS_PATH})
 
 - For all enumeration types `enum` is considered to be its **_underlying type_** (integer).
 
+> [!TIP]
+> Even if the underlying type of `enum` is `char` / `uchar`, it will be treated as an integer (`std::int8_t` / `std::uint8_t`).
+
 - `std::string` $\longleftrightarrow$ `std::string_view`.
 
 - `std::string` / `std::string_view` $\longleftrightarrow$ `const char*`.

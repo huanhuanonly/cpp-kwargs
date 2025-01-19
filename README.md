@@ -314,6 +314,9 @@ include_directories (${CPP_KWARGS_PATH})
 
 - 对于所有枚举类型 `enum` 视为其底层类型（整型）。
 
+> [!TIP]
+> 即使 `enum` 的底层类型是 `char` / `uchar`，它也会作为一个整型（`std::int8_t` / `std::uint8_t`）。
+
 - `std::string` $\longleftrightarrow$ `std::string_view`。
 
 - `std::string` / `std::string_view` $\longleftrightarrow$ `const char*`。
