@@ -181,9 +181,9 @@ protected:
 
     enum WorkFlags : int
     {
-        DoApplyAndCopy,           /// type*     , type**
-        DoCopy,                   /// type*     , type*
+        DoApplyAndCopy = 0,       /// type*     , type**
         DoFree,                   /// type*     , [unused]
+        DoGetTypeName,            /// [unused]  , const char**
         DoGetTypeHash,            /// [unused]  , std::size_t*
         DoGetValueTypeHash,       /// [unused]  , std::size_t*
         DoGetBeginIterator,       /// this      , iterator**
@@ -220,18 +220,15 @@ protected:
                 break;
             }
 
-            case DoCopy:
-            {
-                type* iptr = reinterpret_cast<type*>(__inData);
-                type* optr = reinterpret_cast<type*>(__outData);
-
-                *optr = *iptr;
-                break;
-            }
-
             case DoFree:
             {
                 delete reinterpret_cast<type*>(__inData);
+                break;
+            }
+
+            case DoGetTypeName:
+            {
+                *reinterpret_cast<const char**>(__outData) = typeid(type).name();
                 break;
             }
 
@@ -544,6 +541,15 @@ public:
 
 
     [[nodiscard]]
+    constexpr const char* typeName() const noexcept
+    {
+        const char* result;
+        _M_manager(DoGetTypeName, nullptr, &result);
+
+        return result;
+    }
+
+    [[nodiscard]]
     constexpr std::size_t typeHashCode() const noexcept
     {
         std::size_t hashCode;
@@ -553,8 +559,7 @@ public:
     }
 
     /**
-     * @return If my type is std::vector<int>, then return
-     *         the hash code for int.
+     * @return e.g. If my type is std::vector<int>, then return the hash code for int.
      */
     [[nodiscard]]
     constexpr std::size_t valueTypeHashCode() const noexcept
