@@ -5,13 +5,13 @@
 *
 *     https://github.com/huanhuanonly/cpp-kwargs/blob/main/LICENSE
 *
-* This software is provided "as is", without warranty of any kind, express or implied.
+* THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 * 
-* The author reserves the right to modify the license of this file at any time.
+* THE AUTHOR RESERVES THE RIGHT TO MODIFY THE LICENSE OF THIS FILE AT ANY TIME.
 */
 
 /**
-* CppKwargs.h In the cpp-kwargs (https://github.com/huanhuanonly/cpp-kwargs)
+* kwargs.h In the cpp-kwargs (https://github.com/huanhuanonly/cpp-kwargs)
 * 
 * Created by Yang Huanhuan on December 29, 2024, 14:40:45
 * 
@@ -51,9 +51,9 @@
 * @brief Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey.
 */
 #ifndef KWARGSKEY_CASE_INSENSITIVE
-#   define KWARGSKEY_TO_LOWER_CASE(c) (c)
+#   define KWARGSKEY_TO_LOWERCASE(c) (c)
 #else
-#   define KWARGSKEY_TO_LOWER_CASE(c) _S_tolower(c)
+#   define KWARGSKEY_TO_LOWERCASE(c) _S_tolower(c)
 #endif
 
 class KwargsKey
@@ -82,7 +82,7 @@ public:
     { }
 
     constexpr void pushBack(char __c) noexcept
-    { _M_key = ((_M_key * base) % mod + KWARGSKEY_TO_LOWER_CASE(__c)) % mod; }
+    { _M_key = ((_M_key * base) % mod + KWARGSKEY_TO_LOWERCASE(__c)) % mod; }
 
     template<typename... _Args>
     constexpr void pushBack(char __c, _Args&&... __args) noexcept
@@ -160,6 +160,7 @@ private:
     value_type _M_key = 0;
 };
 
+#undef KWARGSKEY_TO_LOWERCASE
 
 [[nodiscard]]
 constexpr KwargsKey operator""_opt(const char* const __str, std::size_t __size) noexcept
@@ -1287,7 +1288,7 @@ protected:
         _Tp result{};
         std::pair<const KwargsValue*, void**> param;
 
-        _S_valueTypeOf_t<_Tp> element;
+        _S_valueTypeOf_t<_Tp> element{ };
         _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element);
 
 

@@ -4,7 +4,7 @@
 #include <queue>
 #include <stack>
 
-#include "CppKwargs.h"
+#include <kwargs.h>
 
 struct _Test
 {
@@ -229,6 +229,17 @@ static void _test_to_enum(Kwargs<"enum"_opt> kwargs)
     std::cout << static_cast<std::underlying_type_t<Enum>>(kwargs["enum"_opt].valueOr<Enum>()) << '\n';
 }
 
+static void _test_kwargsvalue_typename()
+{
+    _Test_Begin_
+
+    std::cout << KwargsValue(1).typeName() << '\n';
+    std::cout << KwargsValue(1ull).typeName() << '\n';
+    std::cout << KwargsValue("abc").typeName() << '\n';
+    std::cout << KwargsValue(std::string("abc")).typeName() << '\n';
+    std::cout << KwargsValue(std::set<int>{1}).typeName() << '\n';
+}
+
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -277,6 +288,8 @@ int main(void)
 
     _test_general({ {"name"_opt, Enum::EnumC}, {"old"_opt, Enum::EnumB} });
     _test_to_enum({ {"enum", 1} });
+
+    _test_kwargsvalue_typename();
 
     return 0;
 }
