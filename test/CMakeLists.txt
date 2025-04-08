@@ -17,9 +17,13 @@
 # EXPRESS  OR IMPLIED.  THE  AUTHOR  RESERVES  THE  RIGHT  TO MODIFY THE
 # LICENSE OF THIS FILE AT ANY TIME.
 
-set (CMAKE_CXX_STANDARD 17)
-
 message (STATUS "cpp-kwargs: ${CMAKE_CXX_COMPILER_ID}")
+
+set (CMAKE_CXX_STANDARD 20)
+
+if (CMAKE_CXX_STANDARD LESS 17)
+    message (FATAL_ERROR "cpp-kwargs: c++17 or newer is required")
+endif()
 
 if (MSVC AND CMAKE_CXX_STANDARD LESS 20)
     add_compile_definitions (not=!)
@@ -28,6 +32,17 @@ if (MSVC AND CMAKE_CXX_STANDARD LESS 20)
 endif()
 
 add_executable (cpp-kwargs-test "test.cpp")
+
+enable_testing ()
+
+file (GLOB test_sources "test__*.cpp")
+
+foreach (test_src ${test_sources})
+    get_filename_component (test_name ${test_src} NAME_WE)
+    add_executable (${test_name} ${test_src})
+    add_test (NAME ${test_name} COMMAND ${test_name})
+    set_tests_properties (${test_name} PROPERTIES TIMEOUT 3)
+endforeach()
 
 #  _                           _                                         _           #
 # ( )                         ( )                                       (_ )         #
