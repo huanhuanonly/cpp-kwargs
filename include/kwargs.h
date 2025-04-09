@@ -91,6 +91,9 @@ namespace kwargs
 #if defined(_MSC_VER)
 #   pragma warning (push)
 #   pragma warning (disable : 5051)  // C5051: attribute [[attribute-name]] requires at least 'standard_version'; ignored
+#elif defined(__GNUC__)
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wparentheses"  // suggest parentheses around arithmetic in operand of ''
 #endif
 
 
@@ -167,10 +170,10 @@ template<> struct promote_numeric_impl<char>          { using type = wchar_t; };
 #endif
 
 template<typename _Tp>
-struct promote_numeric { using type = promote_numeric_impl<std::remove_cv_t<_Tp>>::type; };
+struct promote_numeric { using type = typename promote_numeric_impl<std::remove_cv_t<_Tp>>::type; };
 
 template<typename _Tp>
-using promote_numeric_t = promote_numeric<_Tp>::type;
+using promote_numeric_t = typename promote_numeric<_Tp>::type;
 
 
 template<typename _Tp, typename = std::void_t<>>
@@ -2384,6 +2387,8 @@ private:
 
 #if defined(_MSC_VER)
 #   pragma warning (pop)
+#elif defined(__GNUC__)
+#   pragma GCC diagnostic pop
 #endif
 
 
