@@ -652,8 +652,8 @@ template<typename _Tp>
     T(4800)T(4801)T(4802)T(4803)T(4804)T(4805)T(4806)T(4807)T(4808)T(4809)T(4810)T(4811)T(4812)T(4813)T(4814)T(4815)T(4816)T(4817)T(4818)T(4819)T(4820)T(4821)T(4822)T(4823)T(4824)T(4825)T(4826)T(4827)T(4828)T(4829)T(4830)T(4831)T(4832)T(4833)T(4834)T(4835)T(4836)T(4837)T(4838)T(4839)T(4840)T(4841)T(4842)T(4843)T(4844)T(4845)T(4846)T(4847)T(4848)T(4849)T(4850)T(4851)T(4852)T(4853)T(4854)T(4855)T(4856)T(4857)T(4858)T(4859)T(4860)T(4861)T(4862)T(4863)T(4864)T(4865)T(4866)T(4867)T(4868)T(4869)T(4870)T(4871)T(4872)T(4873)T(4874)T(4875)T(4876)T(4877)T(4878)T(4879)T(4880)T(4881)T(4882)T(4883)T(4884)T(4885)T(4886)T(4887)T(4888)T(4889)T(4890)T(4891)T(4892)T(4893)T(4894)T(4895)T(4896)T(4897)T(4898)T(4899) \
     T(4900)T(4901)T(4902)T(4903)T(4904)T(4905)T(4906)T(4907)T(4908)T(4909)T(4910)T(4911)T(4912)T(4913)T(4914)T(4915)T(4916)T(4917)T(4918)T(4919)T(4920)T(4921)T(4922)T(4923)T(4924)T(4925)T(4926)T(4927)T(4928)T(4929)T(4930)T(4931)T(4932)
 
-#define _KWARGS_GENERATE_LITERAL_LONGDOUBLE(N) 1e##N##L,
-#define _KWARGS_GENERATE_LITERAL_LONGDOUBLE_NEGATIVE(N) 1e##N##L,
+#define _KWARGS_GENERATE_LITERAL_LONGDOUBLE(N)           1e+##N##L,
+#define _KWARGS_GENERATE_LITERAL_LONGDOUBLE_NEGATIVE(N)  1e-##N##L,
 
     constexpr long double power[] = {
         _KWARGS_GENERATE_LITERAL(_KWARGS_GENERATE_LITERAL_LONGDOUBLE)
@@ -963,15 +963,21 @@ template<typename _Tp>
     return negative ? -result : result;
 }
 
-_KWARGS_Test_(string_to_floating_point<float>("123.123"), 123.123f);  _KWARGS_Test_(string_to_floating_point<float>("-123.123"), -123.123f);
-_KWARGS_Test_(string_to_floating_point<float>("0.520"), 0.520f);      _KWARGS_Test_(string_to_floating_point<float>("-0.1314"), -0.1314f);
-_KWARGS_Test_(string_to_floating_point<double>("0.520"), 0.520);      _KWARGS_Test_(string_to_floating_point<double>("-0.1314"), -0.1314);
-_KWARGS_Test_(string_to_floating_point<long double>("134567890.0987654321"), 134567890.0987654321L);
-_KWARGS_Test_(string_to_floating_point<long double>("-134567890.0987654321"), -134567890.0987654321L);
+_KWARGS_Test_(string_to_floating_point<float>("123.123"), 123.123f);   _KWARGS_Test_(string_to_floating_point<float>("-123.123"), -123.123f);
+_KWARGS_Test_(string_to_floating_point<float>("0.520"), 0.520f);       _KWARGS_Test_(string_to_floating_point<float>("-0.1314"), -0.1314f);
+_KWARGS_Test_(string_to_floating_point<double>("0.520"), 0.520);       _KWARGS_Test_(string_to_floating_point<double>("-0.1314"), -0.1314);
 _KWARGS_Test_(string_to_floating_point<double>("0.520E4"), 0.520E4);   _KWARGS_Test_(string_to_floating_point<double>("-0.1314e10"), -0.1314e10);
 _KWARGS_Test_(string_to_floating_point<double>("0.520E-5"), 0.520E-5); _KWARGS_Test_(string_to_floating_point<double>("-0.1314e-10"), -0.1314e-10);
 _KWARGS_Test_(string_to_floating_point<double>("1e308"), 1e308);       _KWARGS_Test_(string_to_floating_point<double>("-1e308"), -1e308);
 _KWARGS_Test_(string_to_floating_point<double>("1e-308"), 1e-308);     _KWARGS_Test_(string_to_floating_point<double>("-1e-308"), -1e-308);
+
+_KWARGS_Test_(string_to_floating_point<long double>("134567890.0987654321"), 134567890.0987654321L);
+_KWARGS_Test_(string_to_floating_point<long double>("-134567890.0987654321"), -134567890.0987654321L);
+
+#if !defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
+_KWARGS_Test_(string_to_floating_point<long double>("1e+4932"), 1e+4932L);
+_KWARGS_Test_(string_to_floating_point<long double>("1e-4932"), 1e-4932L);
+#endif
 
 
 template<typename _Tp>
