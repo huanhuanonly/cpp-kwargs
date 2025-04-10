@@ -2429,8 +2429,8 @@ public:
         { return static_cast<bool>(_M_that); }
 
         [[nodiscard]]
-        constexpr const DataItem* operator->() const noexcept
-        { return this; }
+        constexpr const KwargsValue* operator->() const noexcept
+        { return _M_that; }
 
     private:
 
