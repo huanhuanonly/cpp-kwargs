@@ -91,6 +91,9 @@ namespace kwargs
 #if defined(_MSC_VER)
 #   pragma warning (push)
 #   pragma warning (disable : 5051)  // C5051: attribute [[attribute-name]] requires at least 'standard_version'; ignored
+#   pragma warning (disable : 4514)  // C4514: 'function' : unreferenced inline function has been removed
+#   pragma warning (disable : 4061)  // C4061: enumerator 'identifier' in switch of enum 'enumeration' is not explicitly handled by a case label
+#   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 #elif defined(__GNUC__) || defined(__clang__)
 #   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wparentheses"  // suggest parentheses around arithmetic in operand of ''
@@ -705,9 +708,11 @@ template<typename _Tp>
 [[nodiscard]] constexpr auto is_prime(_Tp __n) noexcept -> std::enable_if_t<std::is_integral_v<_Tp>, bool>
 {
     constexpr std::array<_Tp, 25> test{
-         2,  3,  5,  7, 11, 13, 17, 19, 23, 29,
-        31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
-        73, 79, 83, 89, 97
+        {
+             2,  3,  5,  7, 11, 13, 17, 19, 23, 29,
+            31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+            73, 79, 83, 89, 97
+        }
     };
 
     if (__n <= 1)
@@ -1010,7 +1015,7 @@ template<typename _Tp>
 
     for (; i < __str.size() && __str[i] >= '0' && __str[i] <= '9'; ++i)
     {
-        result = result * ten + (__str[i] - '0');
+        result = result * ten + static_cast<_Tp>(__str[i] - '0');
     }
 
 
@@ -1022,7 +1027,7 @@ template<typename _Tp>
 
         for (; i < __str.size() && __str[i] >= '0' && __str[i] <= '9'; ++i, power *= 10)
         {
-            fractional_part = fractional_part * ten + (__str[i] - '0');
+            fractional_part = fractional_part * ten + static_cast<_Tp>(__str[i] - '0');
         }
         
         result += fractional_part / power;
@@ -1096,7 +1101,7 @@ static_assert(std::gcd(string_hash_base, string_hash_mod) == 1, "cpp-kwargs: 'st
 
 constexpr string_hash_type string_hash_character(char __c) noexcept
 {
-    return __c;
+    return static_cast<string_hash_type>(__c);
 }
 
 template<char _Char>
@@ -1574,7 +1579,7 @@ public:
         int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckValueType, nullptr, &result);
 
-        return result;
+        return static_cast<bool>(result);
     }
 
     template<typename _Tp>
@@ -1588,7 +1593,7 @@ public:
         int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckInt, nullptr, &result);
 
-        return result;
+        return static_cast<bool>(result);
     }
 
     [[nodiscard]]
@@ -1597,7 +1602,7 @@ public:
         int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckReal, nullptr, &result);
 
-        return result;
+        return static_cast<bool>(result);
     }
 
     [[nodiscard]]
@@ -1606,7 +1611,7 @@ public:
         int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckStdArray, nullptr, &result);
 
-        return result;
+        return static_cast<bool>(result);
     }
 
     [[nodiscard]]
@@ -1615,7 +1620,7 @@ public:
         int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckIterable, nullptr, &result);
 
-        return result;
+        return static_cast<bool>(result);
     }
 
     template<typename _Tp>
@@ -2326,7 +2331,7 @@ protected:
                 if (__index >= 0)
                 {
                     assert(__index < static_cast<decltype(__index)>(sizeof...(_Args)));
-                    *optr = &(*iptr)[__index];
+                    *optr = &(*iptr)[static_cast<std::size_t>(__index)];
                 }
                 else
                 {
@@ -2354,7 +2359,7 @@ public:
     Args(_Args&&... __args) noexcept
         : _M_manager(&Args::_S_manage<_Args...>)
     {
-        _M_data = new std::array<KwargsValue, sizeof...(_Args)>{ std::forward<_Args>(__args)... };
+        _M_data = new std::array<KwargsValue, sizeof...(_Args)>{{ std::forward<_Args>(__args)... }};
     }
 
     _KWARGS_DESTRUCTOR_CONSTEXPR ~Args() noexcept
@@ -2421,7 +2426,7 @@ public:
 
         [[nodiscard]]
         constexpr bool hasValue() const noexcept
-        { return _M_that; }
+        { return static_cast<bool>(_M_that); }
 
         [[nodiscard]]
         constexpr const DataItem* operator->() const noexcept
@@ -2449,7 +2454,7 @@ public:
         }
 
         /// Check for duplicate keys
-        assert([&]() constexpr -> bool
+        assert([&]() constexpr noexcept -> bool
         {
             std::set<KwargsKey> st;
 
@@ -2553,11 +2558,11 @@ public:
 
     /// @brief Multiple KwargsKeys can be joined using the `or` operator.
     [[nodiscard]] friend constexpr std::array<KwargsKey, 2> operator||(KwargsKeyLiteral __first, KwargsKey __second) noexcept
-    { return {__first, __second}; }
+    { return {{__first, __second}}; }
 
     template<std::size_t _Size>
     [[nodiscard]] friend constexpr std::array<KwargsKey, 2> operator||(KwargsKeyLiteral __first, const char (&__second)[_Size]) noexcept
-    { return {__first, KwargsKey(__second)}; }
+    { return {{__first, KwargsKey(__second)}}; }
 
 
 private:

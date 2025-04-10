@@ -37,6 +37,11 @@
 #   include "../include/kwargs.h"
 #endif
 
+#if defined(_MSC_VER)
+#   pragma warning (disable : 4866)  // 'file(line_number)' compiler may not enforce left-to-right evaluation order for call to operator_name
+#   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+#endif
+
 struct _Test
 {
     _Test(const char* const __funcName)
@@ -86,7 +91,7 @@ static void _test_general(Kwargs<"name"_opt, "data"_opt, "old"_opt, "class"_opt,
         std::cout << i << ' ';
 }
 
-static void _test_empty(Kwargs<> kwargs = { })
+static void _test_empty([[maybe_unused]] Kwargs<> kwargs = { })
 {
     _Test_Begin_
 }

@@ -31,6 +31,10 @@ if (MSVC AND CMAKE_CXX_STANDARD LESS 20)
     add_compile_definitions (or=||)
 endif()
 
+if (MSVC)
+    add_compile_options(/Wall /permissive- /Zc:preprocessor)
+endif()
+
 add_executable (cpp-kwargs-test "test.cpp")
 
 enable_testing ()
