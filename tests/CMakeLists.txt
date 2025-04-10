@@ -17,29 +17,32 @@
 # EXPRESS  OR IMPLIED.  THE  AUTHOR  RESERVES  THE  RIGHT  TO MODIFY THE
 # LICENSE OF THIS FILE AT ANY TIME.
 
-cmake_minimum_required (VERSION 3.8)
+message (STATUS "cpp-kwargs: ${CMAKE_CXX_COMPILER_ID}")
 
-include_directories ("include/")
+set (CMAKE_CXX_STANDARD 20)
 
-if (DEFINED KWARGSKEY_CASE_INSENSITIVE)
-    add_compile_definitions (KWARGSKEY_CASE_INSENSITIVE)
+if (CMAKE_CXX_STANDARD LESS 17)
+    message (FATAL_ERROR "cpp-kwargs: c++17 or newer is required")
 endif()
 
-if (DEFINED KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
-    add_compile_definitions (KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+if (MSVC AND CMAKE_CXX_STANDARD LESS 20)
+    add_compile_definitions (not=!)
+    add_compile_definitions (and=&&)
+    add_compile_definitions (or=||)
 endif()
 
-if (DEFINED KWARGSKEY_LITERAL_SHORT_SUFFIX)
-    add_compile_definitions (KWARGSKEY_LITERAL_SHORT_SUFFIX)
-endif()
+add_executable (cpp-kwargs-test "test.cpp")
 
+enable_testing ()
 
-if (${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_SOURCE_DIR})
-    message (STATUS "cpp-kwargs: [testing...].")
-    add_subdirectory ("tests/")
-else()
-    message (STATUS "cpp-kwargs: [included].")
-endif()
+file (GLOB test_sources "test__*.cpp")
+
+foreach (test_src ${test_sources})
+    get_filename_component (test_name ${test_src} NAME_WE)
+    add_executable (${test_name} ${test_src})
+    add_test (NAME ${test_name} COMMAND ${test_name})
+    set_tests_properties (${test_name} PROPERTIES TIMEOUT 3)
+endforeach()
 
 #  _                           _                                         _           #
 # ( )                         ( )                                       (_ )         #

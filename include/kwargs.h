@@ -91,7 +91,7 @@ namespace kwargs
 #if defined(_MSC_VER)
 #   pragma warning (push)
 #   pragma warning (disable : 5051)  // C5051: attribute [[attribute-name]] requires at least 'standard_version'; ignored
-#elif defined(__GNUC__)
+#elif defined(__GNUC__) || defined(__clang__)
 #   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wparentheses"  // suggest parentheses around arithmetic in operand of ''
 #endif
@@ -752,13 +752,24 @@ template<typename _Tp>
     return true;
 }
 
-template <typename _Tp, typename _Other = _Tp>
+
+template<typename _Tp, typename _Other = _Tp>
 constexpr _Tp exchange(_Tp& __value, _Other&& __newValue) noexcept
 {
     _Tp old_value = std::move(__value);
     __value = std::forward<_Other>(__newValue);
 
     return old_value;
+}
+
+
+template<typename _InputForwardIterator, typename _OutputForwardIterator>
+constexpr void copy(_InputForwardIterator __first, _InputForwardIterator __last, _OutputForwardIterator __dest) noexcept
+{
+    for (; __first != __last; ++__first, ++__dest)
+    {
+        *__dest = *__first;
+    }
 }
 
 
@@ -995,6 +1006,95 @@ template<typename _Tp>
 }
 
 
+using string_hash_type = std::uint64_t;
+
+constexpr string_hash_type string_hash_base = 0X1C1ULL;
+constexpr string_hash_type string_hash_mod  = 0X91F5BCB8BB0243ULL;
+
+static_assert(
+    std::less_equal<string_hash_type>{}(string_hash_mod, std::numeric_limits<string_hash_type>::max() / string_hash_base),
+    "cpp-kwargs: The expression 'string_hash_base * string_hash_mod' overflows.");
+
+static_assert(is_prime(string_hash_base)
+#if !defined(_KWARGS_HAS_UINT128)
+        || string_hash_base > 0x100000000ULL
+#endif  
+        , "cpp-kwargs: 'base' must be a prime number.");
+
+static_assert(is_prime(string_hash_mod)
+#if !defined(_KWARGS_HAS_UINT128)
+        || string_hash_mod > 0x100000000ULL
+#endif  
+        , "cpp-kwargs: 'string_hash_mod' must be a prime number.");
+
+static_assert(std::gcd(string_hash_base, string_hash_mod) == 1, "cpp-kwargs: 'string_hash_base' and 'string_hash_mod' must be coprime.");
+
+
+
+constexpr string_hash_type string_hash_character(char __c) noexcept
+{
+    return __c;
+}
+
+template<char _C>
+constexpr string_hash_type string_hash_character() noexcept
+{
+    return string_hash_character(_C);
+}
+
+constexpr string_hash_type string_hash_append(string_hash_type __previous, char __c) noexcept
+{
+    // Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey.
+
+#if defined(KWARGSKEY_CASE_INSENSITIVE)
+    __c = tolower(__c);
+#endif
+
+    return ((__previous * string_hash_base) % string_hash_mod + string_hash_character(__c)) % string_hash_mod;
+}
+
+template<string_hash_type _Previous>
+constexpr string_hash_type string_hash_append_characters() noexcept
+{
+    return _Previous;
+}
+
+template<string_hash_type _Previous, char _C, char... _Cs>
+constexpr string_hash_type string_hash_append_characters() noexcept
+{
+    return string_hash_append_characters<string_hash_append(_Previous, _C), _Cs...>();
+}
+
+template<char... _Cs>
+constexpr string_hash_type string_hash_characters() noexcept
+{
+    return string_hash_append_characters<0, _Cs...>();
+}
+
+constexpr string_hash_type string_hash_string(const char* const __str, std::size_t __len) noexcept
+{
+    string_hash_type result = 0;
+    
+    for (std::size_t i = 0; i < __len; ++i)
+    {
+        result = string_hash_append(result, __str[i]);
+    }
+
+    return result;
+}
+
+constexpr string_hash_type string_hash_string(std::string_view __str) noexcept
+{
+    string_hash_type result = 0;
+    
+    for (const char c : __str)
+    {
+        result = string_hash_append(result, c);
+    }
+
+    return result;
+}
+
 #undef _KWARGS_Test_
 
 }  // namespace detail
@@ -1009,20 +1109,11 @@ template<typename _Tp>
 #undef _KWARGS_LONG_DOUBLE_IS_DOUBLE
 
 
-/**
-* @brief Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey.
-*/
-#ifndef KWARGSKEY_CASE_INSENSITIVE
-#   define _KWARGSKEY_To_lowercase(c) (c)
-#else
-#   define _KWARGSKEY_To_lowercase(c) detail::tolower(c)
-#endif
-
 class KwargsKey
 {
 public:
 
-    using value_type = std::uint64_t;
+    using value_type = detail::string_hash_type;
 
     constexpr KwargsKey() = default;
 
@@ -1033,59 +1124,38 @@ public:
 
     /// @note It does not need to contains '\0' at the end.
     constexpr KwargsKey(const char* const __str, std::size_t __size) noexcept
-        : KwargsKey()
-    {
-        for (std::size_t i = 0; i < __size; ++i)
-        { append(__str[i]); }
-    }
+        : _M_key(detail::string_hash_string(__str, __size))
+    { }
 
     constexpr explicit KwargsKey(value_type __option) noexcept
         : _M_key(__option)
     { }
 
-    constexpr void append(char __c) noexcept
-    { _M_key = ((_M_key * base) % mod + _KWARGSKEY_To_lowercase(__c)) % mod; }
+    constexpr KwargsKey(const class KwargsKeyLiteral& __literal) noexcept;
 
-    template<typename... _Args>
-    constexpr void append(char __c, _Args&&... __args) noexcept
-    {
-        append(__c);
-        append(__args...);
-    }
-
-    static_assert(std::is_same<value_type, std::uint64_t>::value);
-
-    static constexpr value_type base = 0X1C1ULL;
-    static constexpr value_type mod  = 0X91F5BCB8BB0243ULL;
-
-    static_assert(std::less_equal<value_type>{}(mod, std::numeric_limits<value_type>::max() / base), "KwargsKey: The expression 'base * mod' overflows.");
-
-    static_assert(detail::is_prime(base)
-#if !defined(_KWARGS_HAS_UINT128)
-        || base > 0x100000000ULL
-#endif  
-        , "KwargsKey: 'base' must be a prime number.");
-
-    static_assert(detail::is_prime(mod)
-#if !defined(_KWARGS_HAS_UINT128)
-        || mod > 0x100000000ULL
-#endif  
-        , "KwargsKey: 'mod' must be a prime number.");
-
-    static_assert(std::gcd(base, mod) == 1, "KwargsKey: 'base' and 'mod' must be coprime.");
-
-
-    [[nodiscard]]
-    constexpr operator value_type() const noexcept
+    [[nodiscard]] constexpr value_type value() const noexcept
     { return _M_key; }
 
-    [[nodiscard]]
-    constexpr bool operator==(KwargsKey __other) const noexcept
+    [[nodiscard]] constexpr operator value_type() const noexcept
+    { return _M_key; }
+
+    [[nodiscard]] constexpr bool operator==(KwargsKey __other) const noexcept
     { return _M_key == __other._M_key; }
 
-    [[nodiscard]]
-    constexpr bool operator<(KwargsKey __other) const noexcept
+    [[nodiscard]] constexpr bool operator!=(KwargsKey __other) const noexcept
+    { return _M_key != __other._M_key; }
+
+    [[nodiscard]] constexpr bool operator<(KwargsKey __other) const noexcept
     { return _M_key < __other._M_key; }
+
+    [[nodiscard]] constexpr bool operator>(KwargsKey __other) const noexcept
+    { return _M_key > __other._M_key; }
+
+    [[nodiscard]] constexpr bool operator<=(KwargsKey __other) const noexcept
+    { return _M_key <= __other._M_key; }
+
+    [[nodiscard]] constexpr bool operator>=(KwargsKey __other) const noexcept
+    { return _M_key >= __other._M_key; }
 
 
     /// @brief Multiple KwargsKeys can be joined using the `or` operator.
@@ -1106,7 +1176,7 @@ public:
         operator||(const std::array<KwargsKey, _Size>& __first, KwargsKey __second) noexcept
     {
         std::array<KwargsKey, _Size + 1> res;
-        std::copy(__first.begin(), __first.end(), res.begin());
+        detail::copy(__first.begin(), __first.end(), res.begin());
         res.back() = __second;
         return res;
     }
@@ -1117,7 +1187,7 @@ public:
         operator||(const std::array<KwargsKey, _Size>& __first, const char (&__second)[_StringSize]) noexcept
     {
         std::array<KwargsKey, _Size + 1> res;
-        std::copy(__first.begin(), __first.end(), res.begin());
+        detail::copy(__first.begin(), __first.end(), res.begin());
         res.back() = KwargsKey(__second);
         return res;
     }
@@ -1126,23 +1196,6 @@ private:
 
     value_type _M_key = 0;
 };
-
-#undef _KWARGSKEY_To_lowercase
-
-inline namespace literals
-{
-
-[[nodiscard]] constexpr KwargsKey operator""_opt(const char* const __str, std::size_t __size) noexcept
-{ return KwargsKey(__str, __size); }
-
-template<char... _String>
-[[nodiscard]] constexpr KwargsKey operator""_opt() noexcept
-{ KwargsKey result; return result.append(_String...), result; }
-
-[[nodiscard]] constexpr KwargsKey operator""_opt(char __ch) noexcept
-{ KwargsKey result; return result.append(__ch), result; }
-
-}  // namespace literals
 
 
 #define _KWARGSVALUE_INCORRECT_CONVERSION_()  assert(false && "KwargsValue: Incorrect conversion.")
@@ -1317,6 +1370,26 @@ public:
 
     constexpr KwargsValue() = default;
 
+    constexpr KwargsValue(const KwargsValue& __other) noexcept
+    {
+        if (__other._M_valueTag == AppliedFlag)
+            __other._M_manager(DoApplyAndCopy, __other._M_data._M_ptr, &_M_data._M_ptr);
+        else
+            _M_data._M_value = __other._M_data._M_value;
+
+        _M_manager = __other._M_manager;
+        _M_valueTag = __other._M_valueTag;
+        _M_size = __other._M_size;
+    }
+
+    constexpr KwargsValue(KwargsValue&& __other) noexcept
+        : _M_valueTag(detail::exchange(__other._M_valueTag, __other._M_valueTag == AppliedFlag ? PointerFlag : __other._M_valueTag))
+        , _M_size(__other._M_size)
+        , _M_manager(__other._M_manager)
+    {
+       _M_data._M_value = __other._M_data._M_value;
+    }
+
     template<typename _Tp>
     constexpr KwargsValue(const _Tp& __value) noexcept
         : _M_manager(&KwargsValue::_S_manage<_Tp>)
@@ -1345,7 +1418,7 @@ public:
     }
     
     template<typename _Tp>
-    inline KwargsValue(_Tp&& __value)
+    constexpr KwargsValue(_Tp&& __value) noexcept
         : _M_manager(&KwargsValue::_S_manage<_Tp>)
     {
         using type = std::remove_reference_t<_Tp>;
@@ -1365,7 +1438,7 @@ public:
         {
             if constexpr (std::is_rvalue_reference_v<decltype(__value)>)
             {
-                _M_data._M_ptr = new type(std::move(__value));
+                _M_data._M_ptr = new (std::nothrow) type(std::move(__value));
                 _M_valueTag = AppliedFlag;
             }
             else if constexpr (std::is_lvalue_reference_v<decltype(__value)>)
@@ -2266,7 +2339,7 @@ class Kwargs
 {
 public:
 
-    using value_type = std::pair<KwargsKey, KwargsValue>;
+    using value_type = std::pair<const KwargsKey, KwargsValue>;
     using container_type = std::initializer_list<value_type>;
 
     using iterator = typename container_type::iterator;
@@ -2387,8 +2460,49 @@ private:
 };
 
 
-#undef _KWARGS_DESTRUCTOR_CONSTEXPR
-#undef _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR
+class KwargsKeyLiteral
+{
+public:
+
+    using value_type = detail::string_hash_type;
+
+    constexpr KwargsKeyLiteral(value_type __value)
+        : _M_value(__value)
+    { }
+
+    [[nodiscard]] constexpr value_type value() const noexcept
+    {
+        return _M_value;
+    }
+
+    [[nodiscard]] constexpr operator value_type() const noexcept
+    {
+        return value();
+    }
+
+    
+    /// @note KwargsValue has a custom destructor. In C++17 and below, the destructor cannot be declared constexpr.
+    [[nodiscard]] _KWARGS_DESTRUCTOR_CONSTEXPR Kwargs<>::value_type operator=(KwargsValue&& __value) const noexcept
+    {
+        return { KwargsKey(value()), std::move(__value) };
+    }
+
+
+    /// @brief Multiple KwargsKeys can be joined using the `or` operator.
+    [[nodiscard]] friend constexpr std::array<KwargsKey, 2> operator||(KwargsKeyLiteral __first, KwargsKey __second) noexcept
+    { return {__first, __second}; }
+
+    template<std::size_t _Size>
+    [[nodiscard]] friend constexpr std::array<KwargsKey, 2> operator||(KwargsKeyLiteral __first, const char (&__second)[_Size]) noexcept
+    { return {__first, KwargsKey(__second)}; }
+
+
+private:
+    
+    value_type _M_value;
+};
+
+constexpr KwargsKey::KwargsKey(const KwargsKeyLiteral& __literal) noexcept : _M_key(__literal.value()) { }
 
 
 #if defined(_MSC_VER)
@@ -2396,6 +2510,67 @@ private:
 #elif defined(__GNUC__)
 #   pragma GCC diagnostic pop
 #endif
+
+
+inline namespace literals
+{
+
+#if defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+#   if defined(_MSC_VER)
+#       pragma warning (disable: 4455)                    // C4455: literal suffix identifiers that do not start with an underscore are reserved
+#   elif defined(__GNUC__) || defined(__clang__)
+#       pragma GCC diagnostic ignored "-Wliteral-suffix"  // literal operator suffixes not starting with '_' are reserved for future standardization
+#   endif
+#endif
+
+[[nodiscard]] constexpr auto
+#if    defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE) && defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+    operator""o
+#elif  defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+    operator""opt
+#elif  defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+    operator""_o
+#else
+    operator""_opt
+#endif
+        (const char* const __str, std::size_t __size) noexcept
+{ return KwargsKeyLiteral(detail::string_hash_string(__str, __size)); }
+
+
+template<char... _String>
+[[nodiscard]] constexpr auto
+#if    defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE) && defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+    operator""o
+#elif  defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+    operator""opt
+#elif  defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+    operator""_o
+#else
+    operator""_opt
+#endif
+        () noexcept
+{ return KwargsKeyLiteral(detail::string_hash_characters<_String...>()); }
+
+
+[[nodiscard]] constexpr auto
+#if    defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE) && defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+    operator""o
+#elif  defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+    operator""opt
+#elif  defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+    operator""_o
+#else
+    operator""_opt
+#endif
+        (char __ch) noexcept
+{ return KwargsKeyLiteral(detail::string_hash_character(__ch)); }
+
+
+}  // namespace literals
+
+
+#undef _KWARGS_DESTRUCTOR_CONSTEXPR
+#undef _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR
 
 
 }  // namespace kwargs
