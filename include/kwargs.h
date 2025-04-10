@@ -65,9 +65,9 @@ namespace kwargs
 
 
 #if __cplusplus >= 202002L || (defined(_MSC_VER) && defined(_HAS_CXX20) && _HAS_CXX20)
-#   define _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR
+#   define _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(__variable)  __variable
 #else
-#   define _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR  { }
+#   define _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(__variable)  __variable{}
 #endif
 
 
@@ -508,8 +508,8 @@ template<typename _Tp>
     }
 }
 
-_KWARGS_Test_(abs(-1), 1);
-_KWARGS_Test_(abs(1), 1);
+_KWARGS_Test_(abs(-1), static_cast<decltype(abs(-1))>(1));
+_KWARGS_Test_(abs(1),  static_cast<decltype(abs(-1))>(1));
 
 template<typename _Tp>
 [[nodiscard]] constexpr auto power10(std::make_signed_t<std::size_t> __i) noexcept -> std::enable_if_t<std::is_same_v<std::remove_cv_t<_Tp>, float>, _Tp>
@@ -773,7 +773,7 @@ constexpr void copy(_InputForwardIterator __first, _InputForwardIterator __last,
 }
 
 
-#define _KWARGS_SPACE_CHARACTER_SET  " \t\r\f\n"
+#define _KWARGS_SPACE_CHARACTER_SET  "\t\n\v\f\r "
 
 constexpr void string_view_left_trimmed(std::string_view& __sv) noexcept
 {
@@ -805,9 +805,9 @@ _KWARGS_Test_([]() constexpr noexcept -> bool { std::string_view sv = "  _ 52013
 template<typename _Tp>
 [[nodiscard]] constexpr auto string_to_integer(std::string_view __str) noexcept -> std::enable_if_t<std::is_unsigned_v<_Tp>, _Tp>
 {
-    _Tp result{};
+    _Tp result = static_cast<_Tp>(0);
 
-    string_view_left_trimmed(__str);
+    string_view_trimmed(__str);
 
     if (__str.empty())
     {
@@ -824,7 +824,17 @@ template<typename _Tp>
             return _Tp{};
         }
     }
-    
+
+
+    if (is_same_string_ignore_case(__str, "max"))
+    {
+        return std::numeric_limits<_Tp>::max();
+    }
+    else if (is_same_string_ignore_case(__str, "min"))
+    {
+        return std::numeric_limits<_Tp>::min();
+    }
+
 
     if (__str.size() >= 2 && __str[0] == '0')
     {
@@ -870,21 +880,42 @@ template<typename _Tp>
 template<typename _Tp>
 [[nodiscard]] constexpr auto string_to_integer(std::string_view __str) noexcept -> std::enable_if_t<std::is_signed_v<_Tp>, _Tp>
 {
-    string_view_left_trimmed(__str);
+    string_view_trimmed(__str);
 
     if (__str.empty())
     {
         return _Tp{};
     }
 
+    bool negative = false;
+
     if (__str.front() == '-')
     {
-        return -static_cast<_Tp>(string_to_integer<std::make_unsigned_t<_Tp>>(__str.substr(1)));
+        negative = true;
+        __str.remove_prefix(1);
+    }
+    else if (__str.front() == '+')
+    {
+        __str.remove_prefix(1);
+    }
+
+    _Tp _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+
+    if (is_same_string_ignore_case(__str, "max"))
+    {
+        result = std::numeric_limits<_Tp>::max();
+    }
+    else if (is_same_string_ignore_case(__str, "min"))
+    {
+        result = std::numeric_limits<_Tp>::min();
     }
     else
     {
-        return static_cast<_Tp>(string_to_integer<std::make_unsigned_t<_Tp>>(__str));
+        result = static_cast<_Tp>(string_to_integer<std::make_unsigned_t<_Tp>>(__str));
     }
+
+
+    return negative ? -result : result;
 }
 
 _KWARGS_Test_(string_to_integer<std::int32_t>("  "), 0);                      _KWARGS_Test_(string_to_integer<std::int32_t>("  -"), 0);
@@ -896,6 +927,12 @@ _KWARGS_Test_(string_to_integer<std::int32_t>("0b1011001110"), 0b1011001110); _K
 _KWARGS_Test_(string_to_integer<std::int32_t>("0o1234567"), 01234567);        _KWARGS_Test_(string_to_integer<std::int32_t>("-0o1234567"), -01234567);
 _KWARGS_Test_(string_to_integer<std::int64_t>("0xfFabceEd"), 0xfFabceEdLL);   _KWARGS_Test_(string_to_integer<std::int64_t>("-0xfFabceEd"), -0xfFabceEdLL);
 _KWARGS_Test_(string_to_integer<std::int64_t>("  +0x5201314A"), 0x5201314A);  _KWARGS_Test_(string_to_integer<std::int64_t>(" -0x5201314A"), -0x5201314A);
+
+_KWARGS_Test_(string_to_integer<std::int32_t>("max"), std::numeric_limits<std::int32_t>::max());
+_KWARGS_Test_(string_to_integer<std::int32_t>("-max"), -std::numeric_limits<std::int32_t>::max());
+_KWARGS_Test_(string_to_integer<std::int32_t>("min"), std::numeric_limits<std::int32_t>::min());
+_KWARGS_Test_(string_to_integer<std::uint64_t>("max"), std::numeric_limits<std::uint64_t>::max());
+_KWARGS_Test_(string_to_integer<std::uint64_t>("min"), std::numeric_limits<std::uint64_t>::min());
 
 
 template<typename _Tp>
@@ -914,6 +951,8 @@ template<typename _Tp>
 
     bool negative = false;
 
+    auto $ = [&negative](_Tp __value) constexpr noexcept -> _Tp { return negative ? -__value : __value; };
+
     if (__str.front() == '-')
     {
         negative = true;
@@ -930,14 +969,38 @@ template<typename _Tp>
         return zero;
     }
 
-    
+
     if (is_same_string_ignore_case(__str, "inf") || is_same_string_ignore_case(__str, "infinity"))
     {
-        return negative ? -std::numeric_limits<float>::infinity() : std::numeric_limits<float>::infinity();
+        return $(std::numeric_limits<_Tp>::infinity());
     }
     else if (is_same_string_ignore_case(__str, "nan"))
     {
-        return negative ? -std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::quiet_NaN();
+        return $(std::numeric_limits<_Tp>::quiet_NaN());
+    }
+    else if (is_same_string_ignore_case(__str, "max"))
+    {
+        return $(std::numeric_limits<_Tp>::max());
+    }
+    else if (is_same_string_ignore_case(__str, "min"))
+    {
+        return $(std::numeric_limits<_Tp>::min());
+    }
+    else if (is_same_string_ignore_case(__str, "pi"))
+    {
+#if defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
+        return $(static_cast<_Tp>(3.141592653589793));
+#else
+        return $(static_cast<_Tp>(3.141592653589793238462643383279502884L));
+#endif
+    }
+    else if (is_same_string_ignore_case(__str, "e"))
+    {
+#if defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
+        return $(static_cast<_Tp>(2.718281828459045));
+#else
+        return $(static_cast<_Tp>(2.718281828459045235360287471352662498L));
+#endif
     }
 
 
@@ -971,7 +1034,7 @@ template<typename _Tp>
         result *= power10<_Tp>(string_to_integer<std::int64_t>(__str.substr(i)));
     }
 
-    return negative ? -result : result;
+    return $(result);
 }
 
 _KWARGS_Test_(string_to_floating_point<float>("123.123"), 123.123f);   _KWARGS_Test_(string_to_floating_point<float>("-123.123"), -123.123f);
@@ -1036,10 +1099,10 @@ constexpr string_hash_type string_hash_character(char __c) noexcept
     return __c;
 }
 
-template<char _C>
+template<char _Char>
 constexpr string_hash_type string_hash_character() noexcept
 {
-    return string_hash_character(_C);
+    return string_hash_character(_Char);
 }
 
 constexpr string_hash_type string_hash_append(string_hash_type __previous, char __c) noexcept
@@ -1059,16 +1122,16 @@ constexpr string_hash_type string_hash_append_characters() noexcept
     return _Previous;
 }
 
-template<string_hash_type _Previous, char _C, char... _Cs>
+template<string_hash_type _Previous, char _Char, char... _Chars>
 constexpr string_hash_type string_hash_append_characters() noexcept
 {
-    return string_hash_append_characters<string_hash_append(_Previous, _C), _Cs...>();
+    return string_hash_append_characters<string_hash_append(_Previous, _Char), _Chars...>();
 }
 
-template<char... _Cs>
+template<char... _Chars>
 constexpr string_hash_type string_hash_characters() noexcept
 {
-    return string_hash_append_characters<0, _Cs...>();
+    return string_hash_append_characters<0, _Chars...>();
 }
 
 constexpr string_hash_type string_hash_string(const char* const __str, std::size_t __len) noexcept
@@ -1383,9 +1446,9 @@ public:
     }
 
     constexpr KwargsValue(KwargsValue&& __other) noexcept
-        : _M_valueTag(detail::exchange(__other._M_valueTag, __other._M_valueTag == AppliedFlag ? PointerFlag : __other._M_valueTag))
+        : _M_manager(__other._M_manager)
+        , _M_valueTag(detail::exchange(__other._M_valueTag, __other._M_valueTag == AppliedFlag ? PointerFlag : __other._M_valueTag))
         , _M_size(__other._M_size)
-        , _M_manager(__other._M_manager)
     {
        _M_data._M_value = __other._M_data._M_value;
     }
@@ -1478,7 +1541,7 @@ public:
     [[nodiscard]]
     constexpr const char* typeName() const noexcept
     {
-        const char* result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        const char* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoGetTypeName, nullptr, &result);
 
         return result;
@@ -1487,7 +1550,7 @@ public:
     [[nodiscard]]
     constexpr std::size_t typeHashCode() const noexcept
     {
-        std::size_t hashCode _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        std::size_t _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(hashCode);
         _M_manager(DoGetTypeHash, nullptr, &hashCode);
 
         return hashCode;
@@ -1499,7 +1562,7 @@ public:
     [[nodiscard]]
     constexpr std::size_t valueTypeHashCode() const noexcept
     {
-        std::size_t hashCode _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        std::size_t _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(hashCode);
         _M_manager(DoGetValueTypeHash, nullptr, &hashCode);
 
         return hashCode;
@@ -1508,7 +1571,7 @@ public:
     [[nodiscard]]
     constexpr bool hasValueType() const noexcept
     {
-        int result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckValueType, nullptr, &result);
 
         return result;
@@ -1522,7 +1585,7 @@ public:
     [[nodiscard]]
     constexpr bool isInteger() const noexcept
     {
-        int result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckInt, nullptr, &result);
 
         return result;
@@ -1531,7 +1594,7 @@ public:
     [[nodiscard]]
     constexpr bool isRealNumber() const noexcept
     {
-        int result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckReal, nullptr, &result);
 
         return result;
@@ -1540,7 +1603,7 @@ public:
     [[nodiscard]]
     constexpr bool isStdArray() const noexcept
     {
-        int result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckStdArray, nullptr, &result);
 
         return result;
@@ -1549,7 +1612,7 @@ public:
     [[nodiscard]]
     constexpr bool isIterable() const noexcept
     {
-        int result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckIterable, nullptr, &result);
 
         return result;
@@ -2146,7 +2209,7 @@ protected:
 
     template<typename _Tp>
     [[nodiscard]]
-    static constexpr _Tp _S_fromStringLiteral(const char* __str) noexcept
+    static constexpr _Tp _S_fromStringLiteral([[maybe_unused]] const char* __str) noexcept
     { assert(false); return _Tp(); }
 
     template<typename _Tp>
@@ -2305,7 +2368,7 @@ public:
     [[nodiscard]]
     constexpr std::size_t size() const noexcept
     {
-        std::size_t result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        std::size_t _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoGetSize, nullptr, 0, &result);
         return result;
     }
@@ -2313,7 +2376,7 @@ public:
     [[nodiscard]]
     constexpr KwargsValue& operator[](int __i) noexcept
     {
-        KwargsValue* result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        KwargsValue* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoFind, _M_data, __i, &result);
         return *result;
     }
@@ -2321,7 +2384,7 @@ public:
     [[nodiscard]]
     constexpr const KwargsValue& operator[](int __i) const noexcept
     {
-        KwargsValue* result _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR;
+        KwargsValue* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoFind, _M_data, __i, &result);
         return *result;
     }
