@@ -75,17 +75,17 @@ static void _test_general(Kwargs<"name"_opt, "data"_opt, "old"_opt, "class"_opt,
 {
     _Test_Begin_
 
-    std::cout << __dict["name"_opt]->valueOr<std::string>("EmptyName") << '\n';
-    std::cout << __dict["old"_opt]->valueOr<int>() << '\n';
+    std::cout << __dict["name"_opt].valueOr<std::string>("EmptyName") << '\n';
+    std::cout << __dict["old"_opt].valueOr<int>() << '\n';
 
-    std::cout << __dict["class"_opt]->valueOr<std::string>("EmptyClass") << '\n';
+    std::cout << __dict["class"_opt].valueOr<std::string>("EmptyClass") << '\n';
 
     if (__dict[2024_opt].hasValue())
     {
         std::cout << __dict[2024_opt].valueOr<const char*>() << 2024 << '\n';
     }
 
-    auto data = __dict["data"_opt]->valueOr<std::vector<int>>();
+    auto data = __dict["data"_opt].valueOr<std::vector<int>>();
 
     for (const auto& i : data)
         std::cout << i << ' ';
@@ -117,7 +117,7 @@ static void _test_same_container__same_value_type(Kwargs<"set"_opt> kwargs)
 {
     _Test_Begin_
 
-    std::vector<int> list = kwargs["set"]->valueOr<std::vector<int>>();
+    std::vector<int> list = kwargs["set"].valueOr<std::vector<int>>();
 
     for (const auto& i : list)
     {
@@ -129,7 +129,7 @@ static void _test_same_container__different_value_type(Kwargs<"set"_opt> kwargs)
 {
     _Test_Begin_
 
-    std::vector<std::string> list = kwargs["set"]->valueOr<std::vector<std::string>>();
+    std::vector<std::string> list = kwargs["set"].valueOr<std::vector<std::string>>();
 
     for (const auto& i : list)
     {
@@ -141,7 +141,7 @@ static void _test_different_container__same_value_type(Kwargs<"set"_opt> kwargs)
 {
     _Test_Begin_
 
-    std::set<int> st = kwargs["set"]->valueOr<std::set<int>>();
+    std::set<int> st = kwargs["set"].valueOr<std::set<int>>();
 
     for (const auto& i : st)
     {
@@ -150,7 +150,7 @@ static void _test_different_container__same_value_type(Kwargs<"set"_opt> kwargs)
 
     std::cout.put('\n');
 
-    std::queue<int> que = kwargs["set"]->valueOr<std::queue<int>>();
+    std::queue<int> que = kwargs["set"].valueOr<std::queue<int>>();
 
     while (not que.empty())
     {
@@ -163,7 +163,7 @@ static void _test_different_container__different_value_type(Kwargs<"set"_opt> kw
 {
     _Test_Begin_
 
-    std::set<int> st = kwargs["set"]->valueOr<std::set<int>>();
+    std::set<int> st = kwargs["set"].valueOr<std::set<int>>();
 
     for (const auto& i : st)
     {
@@ -172,7 +172,7 @@ static void _test_different_container__different_value_type(Kwargs<"set"_opt> kw
 
     std::cout.put('\n');
 
-    std::queue<std::string> que = kwargs["set"]->valueOr<std::queue<std::string>>();
+    std::queue<std::string> que = kwargs["set"].valueOr<std::queue<std::string>>();
 
     while (not que.empty())
     {
