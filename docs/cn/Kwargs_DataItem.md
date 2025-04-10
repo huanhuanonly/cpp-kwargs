@@ -9,10 +9,10 @@
 ### `operator->()`
 
 ```cpp
-constexpr const DataItem* operator->() const noexcept
+constexpr const KwargsValue* operator->() const noexcept
 ```
 
-`return this`。
+返回指向数据的指针。
 
 ### `hasValue()`
 

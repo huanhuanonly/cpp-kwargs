@@ -38,10 +38,18 @@ constexpr KwargsValue(const char (&__value)[_Size]) noexcept
 ### `~KwargsValue()`
 
 ```cpp
-constexpr ~KwargsValue() noexcept
+_KWARGS_DESTRUCTOR_CONSTEXPR ~KwargsValue() noexcept
 ```
 
 如果值是在构造函数中被 `new` 申请的新对象，则调用值的 **析构函数** 并 `delete` 它。
+
+### `typeName()`
+
+```cpp
+constexpr const char* typeName() const noexcept
+```
+
+返回值的类型名，由 `std::type_info::name()` 获取。
 
 ### `typeHashCode()`
 
@@ -110,6 +118,24 @@ constexpr bool isIterable() const noexcept
 
 > [!TIP]
 > 这里的可迭代的类型需要具有 `.begin()` 和 `.end()` 成员函数。
+
+### `pointer()`
+
+```cpp
+template<typename _Tp>
+constexpr _Tp* pointer() noexcept
+```
+
+返回指向值的指针，不带类型转换。
+
+### `reference()`
+
+```cpp
+template<typename _Tp>
+constexpr _Tp& reference() noexcept
+```
+
+返回值的引用，不带类型转换。
 
 ### `value()`
 

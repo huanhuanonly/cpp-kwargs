@@ -3,7 +3,7 @@
 ## Description
 
 用于封装键值对的集合列表，底层维护了一个 
-`std::initializer_list<std::pair<KwargsKey, KwargsValue>>`。
+`std::initializer_list<std::pair<const KwargsKey, KwargsValue>>`。
 
 ## Syntax
 
@@ -12,7 +12,7 @@ template<KwargsKey::value_type... _OptionalList>
 class Kwargs {...}
 ```
 
-## Parameters
+## Template Parameters
 
 - _`_OptionalList`_
 
@@ -25,7 +25,7 @@ class Kwargs {...}
 ## Public member types
 
 ```cpp
-using value_type = std::pair<KwargsKey, KwargsValue>;
+using value_type = std::pair<const KwargsKey, KwargsValue>;
 using container_type = std::initializer_list<value_type>;
 
 using iterator = typename container_type::iterator;
@@ -42,7 +42,7 @@ using const_iterator = typename container_type::const_iterator;
 constexpr Kwargs(container_type __list) noexcept
 ```
   
-使用 `std::initializer_list<std::pair<KwargsKey, KwargsValue>>` 进行构造。
+使用 `std::initializer_list<std::pair<const KwargsKey, KwargsValue>>` 进行构造。
 
 ### `operator[]()`
 
@@ -58,16 +58,22 @@ constexpr DataItem operator[](KwargsKey __key) noexcept
 constexpr const_iterator begin() const noexcept;
 ```
 
+`std::initializer_list<std::pair<const KwargsKey, KwargsValue>>::begin()`
+
 ### `end()`
 
 ```cpp
 constexpr const_iterator end() const noexcept;
 ```
 
+`std::initializer_list<std::pair<const KwargsKey, KwargsValue>>::end()`
+
 ### `size()`
 
 ```cpp
 constexpr std::size_t size() const noexcept;
 ```
+
+`std::initializer_list<std::pair<const KwargsKey, KwargsValue>>::size()`
 
 返回键的数量。
