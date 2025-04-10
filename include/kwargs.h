@@ -1,7 +1,7 @@
 //  ___    ___    ___       _   _  _       _  _____  ___    ___    ___   
-// (  _`\ (  _`\ (  _`\    ( ) ( )( )  _  ( )(  _  )|  _`\ (  _`\ (  _`\ 
+// (  _`\ (  _`\ (  _`\    ( ) ( )( )  _  ( )(  _  )|  _`\ (  _`\ (  _`\.
 // | ( (_)| |_) )| |_) )   | |/'/'| | ( ) | || (_) || (_) )| ( (_)| (_(_)
-// | |  _ | ,__/'| ,__/'   | , <  | | | | | ||  _  || ,  / | |___ `\__ \ 
+// | |  _ | ,__/'| ,__/'   | , <  | | | | | ||  _  || ,  / | |___ `\__ \.
 // | (_( )| |    | |       | |\`\ | (_/ \_) || | | || |\ \ | (_, )( )_) |
 // (____/'(_)    (_)       (_) (_)`\___x___/'(_) (_)(_) (_)(____/'`\____)
 //                                                                       
@@ -43,12 +43,12 @@
 #include <string_view>
 #include <vector>
 #include <array>
-#include <set>
 
 #include <stdexcept>
 
 #include <cassert>
 #include <cstdlib>
+#include <cstdint>
 
 namespace kwargs
 {
@@ -94,6 +94,9 @@ namespace kwargs
 #   pragma warning (disable : 4514)  // C4514: 'function' : unreferenced inline function has been removed
 #   pragma warning (disable : 4061)  // C4061: enumerator 'identifier' in switch of enum 'enumeration' is not explicitly handled by a case label
 #   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+
+#   pragma warning (disable : 4710)  // C4710: 'function' : function not inlined
+#   pragma warning (disable : 4711)  // C4711: function 'function' selected for inline expansion
 #elif defined(__GNUC__) || defined(__clang__)
 #   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wparentheses"  // suggest parentheses around arithmetic in operand of ''
@@ -2456,14 +2459,21 @@ public:
         /// Check for duplicate keys
         assert([&]() constexpr noexcept -> bool
         {
-            std::set<KwargsKey> st;
-
-            for (const auto& [key, unused] : __list)
+            if (__list.size())
             {
-                st.insert(key);
+                for (auto it = __list.begin() + 1; it != __list.end(); ++it)
+                {
+                    for (auto ft = __list.begin(); ft != it; ++ft)
+                    {
+                        if (it->first == ft->first)
+                        {
+                            return false;
+                        }
+                    }
+                }
             }
 
-            return st.size() == __list.size();
+            return true;
         }());
     }
 

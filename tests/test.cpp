@@ -1,7 +1,7 @@
 //  ___    ___    ___       _   _  _       _  _____  ___    ___    ___   
-// (  _`\ (  _`\ (  _`\    ( ) ( )( )  _  ( )(  _  )|  _`\ (  _`\ (  _`\ 
+// (  _`\ (  _`\ (  _`\    ( ) ( )( )  _  ( )(  _  )|  _`\ (  _`\ (  _`\.
 // | ( (_)| |_) )| |_) )   | |/'/'| | ( ) | || (_) || (_) )| ( (_)| (_(_)
-// | |  _ | ,__/'| ,__/'   | , <  | | | | | ||  _  || ,  / | |___ `\__ \ 
+// | |  _ | ,__/'| ,__/'   | , <  | | | | | ||  _  || ,  / | |___ `\__ \.
 // | (_( )| |    | |       | |\`\ | (_/ \_) || | | || |\ \ | (_, )( )_) |
 // (____/'(_)    (_)       (_) (_)`\___x___/'(_) (_)(_) (_)(____/'`\____)
 //                                                                       
@@ -24,12 +24,13 @@
 * Created by Yang Huanhuan on December 29, 2024, 14:40:45
 */
 
-#include <iostream>
-#include <iomanip>
-#include <vector>
-#include <set>
-#include <queue>
-#include <stack>
+#if defined(_MSC_VER)
+#   pragma warning (disable : 4866)  // 'file(line_number)' compiler may not enforce left-to-right evaluation order for call to operator_name
+#   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+
+#   pragma warning (disable : 4710)  // C4710: 'function' : function not inlined
+#   pragma warning (disable : 4711)  // C4711: function 'function' selected for inline expansion
+#endif
 
 #if __has_include(<kwargs.h>)
 #   include <kwargs.h>
@@ -37,10 +38,12 @@
 #   include "../include/kwargs.h"
 #endif
 
-#if defined(_MSC_VER)
-#   pragma warning (disable : 4866)  // 'file(line_number)' compiler may not enforce left-to-right evaluation order for call to operator_name
-#   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
-#endif
+#include <iostream>
+#include <iomanip>
+#include <vector>
+#include <set>
+#include <queue>
+#include <stack>
 
 struct _Test
 {
@@ -196,7 +199,7 @@ static void _test_args_general(_Args&&... __args)
 template<typename _Tp>
 struct _Test_Container_with_Multiple_insertion_methods : std::vector<_Tp>
 {
-    using std::vector<_Tp>::value_type;
+    using typename std::vector<_Tp>::value_type;
     using std::vector<_Tp>::vector;
     
     // void push_back(const _Tp&) = delete;
