@@ -1233,13 +1233,13 @@ public:
     [[nodiscard]]
     friend constexpr std::array<KwargsKey, 2>
         operator||(KwargsKey __first, KwargsKey __second) noexcept
-    { return {__first, __second}; }
+    { return {{__first, __second}}; }
 
     template<std::size_t _StringSize>
     [[nodiscard]]
     friend constexpr std::array<KwargsKey, 2>
         operator||(KwargsKey __first, const char (&__second)[_StringSize]) noexcept
-    { return {__first, KwargsKey(__second)}; }
+    { return {{__first, KwargsKey(__second)}}; }
 
     template<std::size_t _Size>
     [[nodiscard]]
