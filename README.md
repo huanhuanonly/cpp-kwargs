@@ -170,7 +170,7 @@ _在 Python 中， `**Kwargs` 用于函数定义时接受任意数量的关键�
 - ```cpp
   auto func(Kwargs<"size"_opt> kwargs = {})
   {
-    std::cout << kwargs["size"].typeName() << std::endl;
+    std::cout << kwargs["size"]->typeName() << std::endl;
   }
 
   func({ "size"_opt = 520 });  // Output: int

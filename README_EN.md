@@ -170,7 +170,7 @@ _In Python, `**kwargs` allows a function to accept any number of keyword argumen
 ```cpp
 auto func(Kwargs<"size"_opt> kwargs = {})
 {
-  std::cout << kwargs["size"].typeName() << std::endl;
+  std::cout << kwargs["size"]->typeName() << std::endl;
 }
 
 func({ "size"_opt = 520 });  // Output: int  
