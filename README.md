@@ -413,7 +413,11 @@ add_subdirectory (${CPP_KWARGS_PATH})
 </details>
 
 > [!IMPORTANT]
-> 所有代码在 MSVC/GCC (C++17/20) 中通过测试。
+> 编译器最低版本要求：
+> - $\texttt{MSVC}\geq\text{v}{19.25}\left(\text{VS}{16.5}\right)$  
+> - $\texttt{GCC}\geq{10.1}$  
+> - $\texttt{Clang}\geq{11.0.0}$
+> 
 > [发现问题？](https://github.com/huanhuanonly/cpp-kwargs/issues/new)
 
 ---

@@ -71,6 +71,18 @@ namespace kwargs
 #endif
 
 
+#if defined(__has_cpp_attribute) && __has_cpp_attribute(likely) >= 201803L && __has_cpp_attribute(unlikely) >= 201803L
+#   define _KWARGS_ATTRIBUTE_LIKELY    [[likely]]
+#   define _KWARGS_ATTRIBUTE_UNLIKELY  [[unlikely]]
+#elif defined(__clang__)
+#   define _KWARGS_ATTRIBUTE_LIKELY    [[__likely__]]
+#   define _KWARGS_ATTRIBUTE_UNLIKELY  [[__unlikely__]]
+#else
+#   define _KWARGS_ATTRIBUTE_LIKELY
+#   define _KWARGS_ATTRIBUTE_UNLIKELY
+#endif
+
+
 #if defined(_MSC_VER)
 #   define _KWARGS_INT128
 #   define _KWARGS_UINT128
@@ -84,7 +96,8 @@ namespace kwargs
 
 
 #if defined(_MSC_VER) && !defined(_GLIBCXX_USE_FLOAT128) && !defined(__FLT128_MAX__)
-#   define _KWARGS_LONG_DOUBLE_IS_DOUBLE  true
+#else
+#   define _KWARGS_HAS_FLOAT128  true
 #endif
 
 
@@ -97,6 +110,7 @@ namespace kwargs
 
 #   pragma warning (disable : 4710)  // C4710: 'function' : function not inlined
 #   pragma warning (disable : 4711)  // C4711: function 'function' selected for inline expansion
+#   pragma warning (disable : 4738)  // C4738: storing 32-bit float result in memory, possible loss of performance
 #elif defined(__GNUC__) || defined(__clang__)
 #   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wparentheses"  // suggest parentheses around arithmetic in operand of ''
@@ -107,9 +121,9 @@ namespace detail
 {
 
 #if defined(_DEBUG)
-#   define _KWARGS_Test_(__test, ...)  static_assert(all_equal(__test, ##__VA_ARGS__), "Kwargs: a test failed.")
+#   define _KWARGS_Test_(...)  static_assert(all_equal(__VA_ARGS__), "Kwargs: a test failed.")
 #else
-#   define _KWARGS_Test_(__test, ...)
+#   define _KWARGS_Test_(...)
 #endif
 
 template<typename _Tp, typename... _Args>
@@ -598,7 +612,7 @@ template<typename _Tp>
 template<typename _Tp>
 [[nodiscard]] constexpr auto power10(std::make_signed_t<std::size_t> __i) noexcept -> std::enable_if_t<std::is_same_v<std::remove_cv_t<_Tp>, long double>, _Tp>
 {
-#if defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
+#if !defined(_KWARGS_HAS_FLOAT128)
 
     static_assert(sizeof(long double) == sizeof(double));
 
@@ -684,7 +698,7 @@ template<typename _Tp>
         return power_negative[-__i];
     }
 
-#endif  // _KWARGS_LONG_DOUBLE_IS_DOUBLE
+#endif  // _KWARGS_HAS_FLOAT128
 }
 
 
@@ -996,18 +1010,18 @@ template<typename _Tp>
     }
     else if (is_same_string_ignore_case(__str, "pi"))
     {
-#if defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
-        return $(static_cast<_Tp>(3.141592653589793));
-#else
+#if defined(_KWARGS_HAS_FLOAT128)
         return $(static_cast<_Tp>(3.141592653589793238462643383279502884L));
+#else
+        return $(static_cast<_Tp>(3.141592653589793));
 #endif
     }
     else if (is_same_string_ignore_case(__str, "e"))
     {
-#if defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
-        return $(static_cast<_Tp>(2.718281828459045));
-#else
+#if defined(_KWARGS_HAS_FLOAT128)
         return $(static_cast<_Tp>(2.718281828459045235360287471352662498L));
+#else
+        return $(static_cast<_Tp>(2.718281828459045));
 #endif
     }
 
@@ -1056,7 +1070,7 @@ _KWARGS_Test_(string_to_floating_point<double>("1e-308"), 1e-308);     _KWARGS_T
 _KWARGS_Test_(string_to_floating_point<long double>("134567890.0987654321"), 134567890.0987654321L);
 _KWARGS_Test_(string_to_floating_point<long double>("-134567890.0987654321"), -134567890.0987654321L);
 
-#if !defined(_KWARGS_LONG_DOUBLE_IS_DOUBLE)
+#if defined(_KWARGS_HAS_FLOAT128)
 _KWARGS_Test_(string_to_floating_point<long double>("1e+4932"), 1e+4932L);
 _KWARGS_Test_(string_to_floating_point<long double>("1e-4932"), 1e-4932L);
 #endif
@@ -1177,7 +1191,7 @@ constexpr string_hash_type string_hash_string(std::string_view __str) noexcept
 #undef _KWARGS_HAS_INT128
 #undef _KWARGS_HAS_UINT128
 
-#undef _KWARGS_LONG_DOUBLE_IS_DOUBLE
+#undef _KWARGS_HAS_FLOAT128
 
 
 class KwargsKey
@@ -1645,7 +1659,7 @@ public:
 
                 return reinterpret_cast<_Tp*>(&_M_data._M_value);
 
-            [[unlikely]]
+            _KWARGS_ATTRIBUTE_UNLIKELY
             default:
                 
                 assert(false);
@@ -1672,7 +1686,7 @@ public:
 
                 return reinterpret_cast<const _Tp*>(&_M_data._M_value);
 
-            [[unlikely]]
+            _KWARGS_ATTRIBUTE_UNLIKELY
             default:
                 
                 assert(false);
@@ -1924,10 +1938,10 @@ public:
         {
             // return reference<_Tp>();
 
-            if (_M_valueTag == ValueFlag) [[likely]]
+            if (_M_valueTag == ValueFlag) _KWARGS_ATTRIBUTE_LIKELY
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
 
-            else [[unlikely]] // if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
+            else _KWARGS_ATTRIBUTE_UNLIKELY // if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
                 return *reinterpret_cast<const _Tp*>(_M_data._M_ptr);
         } else
 
@@ -1946,10 +1960,10 @@ public:
                     if (_M_size == sizeof(std::int8_t))
                         return static_cast<_Tp>(reference<std::int8_t>());
 
-                    else if (_M_size == sizeof(std::int16_t)) [[unlikely]]
+                    else if (_M_size == sizeof(std::int16_t)) _KWARGS_ATTRIBUTE_UNLIKELY
                         return static_cast<_Tp>(reference<std::int16_t>());
 
-                    else if (_M_size == sizeof(std::int32_t)) [[likely]]
+                    else if (_M_size == sizeof(std::int32_t)) _KWARGS_ATTRIBUTE_LIKELY
                         return static_cast<_Tp>(reference<std::int32_t>());
 
                     else // if (_M_size == sizeof(std::int64_t))
@@ -2052,10 +2066,10 @@ public:
         {
             // return reference<_Tp>();
 
-            if (_M_valueTag == ValueFlag) [[likely]]
+            if (_M_valueTag == ValueFlag) _KWARGS_ATTRIBUTE_LIKELY
                 return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
             
-            else [[unlikely]] // if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
+            else _KWARGS_ATTRIBUTE_UNLIKELY // if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
                 return *reinterpret_cast<const _Tp*>(_M_data._M_ptr);
         }
 
@@ -2074,10 +2088,10 @@ public:
                     if (_M_size == sizeof(std::int8_t))
                         return static_cast<_Tp>(reference<std::int8_t>());
 
-                    else if (_M_size == sizeof(std::int16_t)) [[unlikely]]
+                    else if (_M_size == sizeof(std::int16_t)) _KWARGS_ATTRIBUTE_UNLIKELY
                         return static_cast<_Tp>(reference<std::int16_t>());
 
-                    else if (_M_size == sizeof(std::int32_t)) [[likely]]
+                    else if (_M_size == sizeof(std::int32_t)) _KWARGS_ATTRIBUTE_LIKELY
                         return static_cast<_Tp>(reference<std::int32_t>());
 
                     else // if (_M_size == sizeof(std::int64_t))
@@ -2445,7 +2459,7 @@ public:
     {
         /// If _OptionalList is not empty then check
         /// whether all keys are in _OptionalList
-        if constexpr (sizeof...(_OptionalList))
+        if constexpr (sizeof...(_OptionalList) != 0)
         {
             for (const auto& i : __list)
             {
@@ -2650,6 +2664,8 @@ template<char... _String>
 #undef _KWARGS_DESTRUCTOR_CONSTEXPR
 #undef _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR
 
+#undef _KWARGS_ATTRIBUTE_LIKELY
+#undef _KWARGS_ATTRIBUTE_UNLIKELY
 
 }  // namespace kwargs
 

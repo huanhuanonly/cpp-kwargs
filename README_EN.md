@@ -398,7 +398,11 @@ add_subdirectory (${CPP_KWARGS_PATH})
 </details>
 
 > [!IMPORTANT]
-> All code passes tests in MSVC/GCC (C++17/20).
+> The minimum compiler version requirements are as follows:
+> - $\texttt{MSVC}\geq\text{v}{19.25}\left(\text{VS}{16.5}\right)$  
+> - $\texttt{GCC}\geq{10.1}$  
+> - $\texttt{Clang}\geq{11.0.0}$
+> 
 > [Found a problem?](https://github.com/huanhuanonly/cpp-kwargs/issues/new)
 
 ---
