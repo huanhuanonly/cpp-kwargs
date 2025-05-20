@@ -74,9 +74,6 @@ namespace kwargs
 #if defined(__has_cpp_attribute) && __has_cpp_attribute(likely) >= 201803L && __has_cpp_attribute(unlikely) >= 201803L
 #   define _KWARGS_ATTRIBUTE_LIKELY    [[likely]]
 #   define _KWARGS_ATTRIBUTE_UNLIKELY  [[unlikely]]
-#elif defined(__clang__)
-#   define _KWARGS_ATTRIBUTE_LIKELY    [[__likely__]]
-#   define _KWARGS_ATTRIBUTE_UNLIKELY  [[__unlikely__]]
 #else
 #   define _KWARGS_ATTRIBUTE_LIKELY
 #   define _KWARGS_ATTRIBUTE_UNLIKELY
@@ -414,6 +411,80 @@ template<typename _Container, typename _ValueType,
 constexpr void container_insert(_Container& __container, _ValueType&& __element) noexcept
 { __container.push_front(std::forward<_ValueType>(__element)); }
 
+
+
+template<typename _Tp>
+[[nodiscard]] constexpr auto type_name() noexcept
+{
+#if defined(_MSC_VER)
+
+    std::string_view sv(__FUNCSIG__);
+    sv.remove_prefix(sizeof("auto __cdecl kwargs::detail::type_name<") - 1);
+    sv.remove_suffix(sizeof(">(void) noexcept") - 1);
+
+#elif defined(__clang__)
+
+    std::string_view sv(__PRETTY_FUNCTION__);
+    sv.remove_prefix(sizeof("auto kwargs::detail::type_name() [_Tp = ") - 1);
+    sv.remove_suffix(sizeof("]") - 1);
+
+#elif defined(__GNUC__)
+
+    std::string_view sv(__PRETTY_FUNCTION__);
+    sv.remove_prefix(sizeof("constexpr auto kwargs::detail::type_name() [with _Tp = ") - 1);
+    sv.remove_suffix(sizeof("]") - 1);
+
+#else
+
+    std::string_view sv(typeid(_Tp).name());
+
+#endif
+
+    return sv;
+}
+
+template<auto _Vp>
+[[nodiscard]] constexpr auto constant_name() noexcept
+{
+#if defined(_MSC_VER)
+
+    std::string_view sv(__FUNCSIG__);
+    sv.remove_prefix(sizeof("auto __cdecl kwargs::detail::constant_name<") - 1);
+    sv.remove_suffix(sizeof(">(void) noexcept") - 1);
+
+#elif defined(__clang__)
+
+    std::string_view sv(__PRETTY_FUNCTION__);
+    sv.remove_prefix(sizeof("auto kwargs::detail::constant_name() [_Vp = ") - 1);
+    sv.remove_suffix(sizeof("]") - 1);
+
+#elif defined(__GNUC__)
+
+    std::string_view sv(__PRETTY_FUNCTION__);
+    sv.remove_prefix(sizeof("constexpr auto kwargs::detail::constant_name() [with auto _Vp = ") - 1);
+    sv.remove_suffix(sizeof("]") - 1);
+
+#else
+
+    std::string_view sv{};
+
+#endif
+
+    return sv;
+}
+
+template<auto _Ep>
+[[nodiscard]] constexpr auto enum_name() noexcept
+{
+    static_assert(std::is_enum_v<decltype(_Ep)>);
+
+    auto sv = constant_name<_Ep>();
+
+    if (auto fpos = sv.find_last_of(':'); fpos != sv.npos)
+        return sv.substr(fpos + 1);
+    else
+        return sv;
+}
 
 
 [[nodiscard]] constexpr char tolower(char __c) noexcept
@@ -795,11 +866,11 @@ constexpr void copy(_InputForwardIterator __first, _InputForwardIterator __last,
 }
 
 
-#define _KWARGS_SPACE_CHARACTER_SET  "\t\n\v\f\r "
+static constexpr const char* space_character_set = "\t\n\v\f\r ";
 
 constexpr void string_view_left_trimmed(std::string_view& __sv) noexcept
 {
-    if (auto pos = __sv.find_first_not_of(_KWARGS_SPACE_CHARACTER_SET))
+    if (auto pos = __sv.find_first_not_of(space_character_set))
     {
         __sv.remove_prefix(pos != std::string_view::npos ? pos : __sv.size());
     }
@@ -807,7 +878,7 @@ constexpr void string_view_left_trimmed(std::string_view& __sv) noexcept
 
 constexpr void string_view_right_trimmed(std::string_view& __sv) noexcept
 {
-    if (auto pos = __sv.find_last_not_of(_KWARGS_SPACE_CHARACTER_SET); __sv.size() && pos != __sv.size() - 1)
+    if (auto pos = __sv.find_last_not_of(space_character_set); __sv.size() && pos != __sv.size() - 1)
     {
         __sv.remove_suffix(pos != std::string_view::npos ? __sv.size() - 1 - pos : __sv.size());
     }
@@ -820,8 +891,6 @@ constexpr void string_view_trimmed(std::string_view& __sv) noexcept
 }
 
 _KWARGS_Test_([]() constexpr noexcept -> bool { std::string_view sv = "  _ 5201314 _  "; string_view_trimmed(sv); return sv == "_ 5201314 _"; }());
-
-#undef _KWARGS_SPACE_CHARACTER_SET
 
 
 template<typename _Tp>
@@ -1292,23 +1361,23 @@ protected:
 
     enum WorkFlags : int
     {
-        DoApplyAndCopy = 0,       /// type*     , type**
-        DoFree,                   /// type*     , [unused]
-        DoGetTypeName,            /// [unused]  , const char**
-        DoGetTypeHash,            /// [unused]  , std::size_t*
-        DoGetValueTypeHash,       /// [unused]  , std::size_t*
-        DoGetBeginIterator,       /// this      , iterator**
-        DoIterate,                /// std::pair<this, iterator**>, value_type*
-        DoIterateAny,             /// std::pair<this, iterator**>, KwargsValue*
+        DoApplyAndCopy = 0,                // type*                      , type**
+        DoFree,                            // type*                      , [unused]
+        DoGetTypeName,                     // [unused]                   , std::string_view*
+        DoGetTypeHash,                     // [unused]                   , std::size_t*
+        DoGetValueTypeHash,                // [unused]                   , std::size_t*
+        DoGetBeginIterator,                // this                       , iterator**
+        DoIterate,                         // std::pair<this, iterator**>, value_type*
+        DoIterateAny,                      // std::pair<this, iterator**>, KwargsValue*
 
-        DoCheckInt  = 0b0001'000,  /// [unused], int*
-        DoCheckReal = 0b0010'000,  /// [unused], int*
-        DoCheckSign = 0b0100'000,  /// [unused], int*
-        DoCheckEnum = 0b1000'000,  /// [unused], int*
+        DoCheckInt  = 0b0001'000,          // [unused], int*
+        DoCheckReal = 0b0010'000,          // [unused], int*
+        DoCheckSign = 0b0100'000,          // [unused], int*
+        DoCheckEnum = 0b1000'000,          // [unused], int*
 
-        DoCheckIterable  = 0b001'0000'000, /// [unused], int*
-        DoCheckValueType = 0b010'0000'000, /// [unused], int*
-        DoCheckStdArray  = 0b100'0000'000  /// [unused], int*
+        DoCheckIterable  = 0b001'0000'000, // [unused], int*
+        DoCheckValueType = 0b010'0000'000, // [unused], int*
+        DoCheckStdArray  = 0b100'0000'000  // [unused], int*
     };
 
     [[nodiscard]]
@@ -1339,7 +1408,7 @@ protected:
 
             case DoGetTypeName:
             {
-                *reinterpret_cast<const char**>(__outData) = typeid(type).name();
+                *reinterpret_cast<std::string_view*>(__outData) = detail::type_name<_Tp>();
                 break;
             }
 
@@ -1561,9 +1630,9 @@ public:
 
 
     [[nodiscard]]
-    constexpr const char* typeName() const noexcept
+    constexpr std::string_view typeName() const noexcept
     {
-        const char* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        std::string_view _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoGetTypeName, nullptr, &result);
 
         return result;
@@ -1618,6 +1687,15 @@ public:
     {
         int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
         _M_manager(DoCheckReal, nullptr, &result);
+
+        return static_cast<bool>(result);
+    }
+
+    [[nodiscard]]
+    constexpr bool isEnum() const noexcept
+    {
+        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoCheckEnum, nullptr, &result);
 
         return static_cast<bool>(result);
     }
