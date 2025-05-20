@@ -37,7 +37,6 @@ endif()
 
 add_executable (cpp-kwargs-test "test.cpp")
 
-enable_testing ()
 
 file (GLOB test_sources "test__*.cpp")
 

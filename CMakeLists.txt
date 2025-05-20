@@ -36,6 +36,10 @@ endif()
 
 if (${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_SOURCE_DIR})
     message (STATUS "cpp-kwargs: [testing...].")
+
+    include (CTest)
+    enable_testing ()
+
     add_subdirectory ("tests/")
 else()
     message (STATUS "cpp-kwargs: [included].")
