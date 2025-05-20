@@ -1,33 +1,63 @@
-# struct `DataItem`
-
-## Description
+# `DataItem` structure
 
 [`KwargsValue`](./KwargsValue.md) 的包装器，类似于 [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)。
 
-## Public member functions
-
-### `operator->()`
+## 语法
 
 ```cpp
-constexpr const KwargsValue* operator->() const noexcept
+struct DataItem;
 ```
+
+## 成员
+
+### 构造函数
+
+|名称|描述|
+|-|-|
+|[`DateItem`](#dataitem)|构造函数。|
+
+### 函数
+
+|名称|描述|
+|-|-|
+|[`valueOr`](#valueor)|构造函数。|
+|[`hasValue`](#hasvalue)|构造函数。|
+
+## 运算符
+
+|名称|描述|
+|-|-|
+|[`operator->`](#operator-)|构造函数。|
+
+### `DataItem`
+
+构造函数。
+
+```cpp
+constexpr DataItem(const KwargsValue* __that = nullptr) noexcept;
+```
+
+### `operator->`
 
 返回指向数据的指针。
 
-### `hasValue()`
-
 ```cpp
-constexpr bool hasValue() const noexcept
+constexpr const KwargsValue* operator->() const noexcept;
 ```
 
-如果不为空（包含值）则返回 `true`，否则返回 `false`。
+### `hasValue`
 
+检查是否有键对应的值，如果有，返回 `true`，否则，返回 `false`。
 
-### `valueOr()`
+```cpp
+constexpr bool hasValue() const noexcept;
+```
+
+### `valueOr`
 
 ```cpp
 template<typename _ValueType, typename... _Args>
-constexpr _ValueType valueOr(_Args&&... __args) const noexcept
+constexpr _ValueType valueOr(_Args&&... __args) const noexcept;
 ```
 
 - _`_ValueType`_
@@ -42,10 +72,10 @@ constexpr _ValueType valueOr(_Args&&... __args) const noexcept
   
   当对应的键没有值时，将使用该参数列表来调用 `_ValueType` 的构造函数进行原地构造并返回。
 
-  示例：
+#### 示例
 
-  ```cpp
-  dataItem.valueOr<std::string>(5, 'c');
-  ```
+```cpp
+dataItem.valueOr<std::string>(5, 'c');
+```
 
-  如果 $dataItem$ 为空（不包含值），则返回 `std::string(5, 'c')`，同等于 `std::string("ccccc")`。
+如果 $dataItem$ 为空（不包含值），则返回 `std::string(5, 'c')`，同等于 `std::string("ccccc")`。
