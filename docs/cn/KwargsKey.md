@@ -79,7 +79,7 @@ constexpr explicit KwargsKey(value_type __option) noexcept;
 获取哈希值。
 
 ```cpp
-[[nodiscard]] constexpr value_type value() const noexcept;
+constexpr value_type value() const noexcept;
 ```
 
 ### `operator value_type()`
