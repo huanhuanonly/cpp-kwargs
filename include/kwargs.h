@@ -43,6 +43,7 @@
 #include <string_view>
 #include <vector>
 #include <array>
+#include <tuple>
 
 #include <stdexcept>
 
@@ -50,21 +51,33 @@
 #include <cstdlib>
 #include <cstdint>
 
+extern "C++"
+{
+
 namespace kwargs
 {
 
-#if defined(_MSC_VER) && defined(_CONSTEXPR20)
-#   define _KWARGS_DESTRUCTOR_CONSTEXPR    _CONSTEXPR20
-#elif defined(__GNUC__) && defined(_GLIBCXX20_CONSTEXPR)
-#   define _KWARGS_DESTRUCTOR_CONSTEXPR    _GLIBCXX20_CONSTEXPR
-#elif defined(__clang__) && __cpp_constexpr >= 201907L
-#   define _KWARGS_DESTRUCTOR_CONSTEXPR    constexpr
+#if defined(_MSC_VER) && defined(_HAS_CXX20) && _HAS_CXX20
+#   define _KWARGS_HAS_CXX20  true
+#elif (defined(__GNUC__) || defined(__clang__)) && __cplusplus >= 202002L
+#   define _KWARGS_HAS_CXX20  true
 #else
-#   define _KWARGS_DESTRUCTOR_CONSTEXPR    inline
+#   define _KWARGS_HAS_CXX20  false
 #endif
 
+#if _KWARGS_HAS_CXX20
+#   define _KWARGS_DESTRUCTOR_CONSTEXPR  constexpr
+#else
+#   define _KWARGS_DESTRUCTOR_CONSTEXPR  inline
+#endif
 
-#if __cplusplus >= 202002L || (defined(_MSC_VER) && defined(_HAS_CXX20) && _HAS_CXX20)
+#if ((defined(_MSC_VER) || defined(__GNUC__)) && !defined(__clang__)) || _KWARGS_HAS_CXX20
+#   define _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR  constexpr
+#else
+#   define _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR  inline
+#endif
+
+#if _KWARGS_HAS_CXX20
 #   define _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(__variable)  __variable
 #else
 #   define _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(__variable)  __variable{}
@@ -100,14 +113,14 @@ namespace kwargs
 
 #if defined(_MSC_VER)
 #   pragma warning (push)
-#   pragma warning (disable : 5051)  // C5051: attribute [[attribute-name]] requires at least 'standard_version'; ignored
-#   pragma warning (disable : 4514)  // C4514: 'function' : unreferenced inline function has been removed
-#   pragma warning (disable : 4061)  // C4061: enumerator 'identifier' in switch of enum 'enumeration' is not explicitly handled by a case label
-#   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+#   pragma warning (disable: 5051)  // C5051: attribute [[attribute-name]] requires at least 'standard_version'; ignored
+#   pragma warning (disable: 4514)  // C4514: 'function' : unreferenced inline function has been removed
+#   pragma warning (disable: 4061)  // C4061: enumerator 'identifier' in switch of enum 'enumeration' is not explicitly handled by a case label
+#   pragma warning (disable: 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 
-#   pragma warning (disable : 4710)  // C4710: 'function' : function not inlined
-#   pragma warning (disable : 4711)  // C4711: function 'function' selected for inline expansion
-#   pragma warning (disable : 4738)  // C4738: storing 32-bit float result in memory, possible loss of performance
+#   pragma warning (disable: 4710)  // C4710: 'function' : function not inlined
+#   pragma warning (disable: 4711)  // C4711: function 'function' selected for inline expansion
+#   pragma warning (disable: 4738)  // C4738: storing 32-bit float result in memory, possible loss of performance
 #elif defined(__GNUC__) || defined(__clang__)
 #   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wparentheses"  // suggest parentheses around arithmetic in operand of ''
@@ -117,6 +130,8 @@ namespace kwargs
 namespace detail
 {
 
+#define __kwargs_detail ::kwargs::detail::
+
 #if defined(_DEBUG)
 #   define _KWARGS_Test_(...)  static_assert(all_equal(__VA_ARGS__), "Kwargs: a test failed.")
 #else
@@ -124,7 +139,7 @@ namespace detail
 #endif
 
 template<typename _Tp, typename... _Args>
-[[nodiscard]] constexpr bool all_equal(_Tp&& __first, _Args&& ...__args) noexcept
+[[nodiscard]] constexpr bool all_equal(_Tp&& __first, _Args&&... __args) noexcept
 {
     if constexpr (sizeof...(_Args) == 0)
     {
@@ -136,20 +151,52 @@ template<typename _Tp, typename... _Args>
     }
 }
 
-template<typename _Tp, typename... _Types>
-static constexpr inline bool is_any_of_v = (std::is_same_v<_Tp, _Types> || ...);
+#if defined(__clang__)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wunused-const-variable"  // unused variable ''
+#endif
+
+template<bool _Test, auto _V1, auto _V2>
+struct conditional_value : std::integral_constant<decltype(_V1), _V1> { };
+
+template<auto _V1, auto _V2>
+struct conditional_value<false, _V1, _V2> : std::integral_constant<decltype(_V2), _V2> { };
+
+template<bool _Test, auto _V1, auto _V2>
+static constexpr inline auto conditional_value_v = conditional_value<_Test, _V1, _V2>::value;
+
 
 template<typename _Tp>
-static constexpr inline bool is_char_v = is_any_of_v<std::remove_cv_t<_Tp>, char, signed char, unsigned char>;
+struct is_bounded_array_impl : std::false_type { };
+
+template<typename _Tp, std::size_t _Size>
+struct is_bounded_array_impl<_Tp[_Size]> : std::true_type { };
 
 template<typename _Tp>
-static constexpr inline bool is_integral_v = std::is_integral_v<_Tp> || std::is_enum_v<_Tp>;
-
-template<auto _V>
-static constexpr inline bool not_v = !_V;
+static constexpr inline bool is_bounded_array_v = is_bounded_array_impl<std::remove_reference_t<_Tp>>::value;
 
 template<typename _Tp>
-static constexpr inline bool use_value_flag_v = (is_integral_v<_Tp> || std::is_pointer_v<_Tp> || std::is_floating_point_v<_Tp>) && sizeof(_Tp) <= sizeof(void*);
+struct is_bounded_array : std::bool_constant<is_bounded_array_v<_Tp>> { };
+
+
+template<typename _Tp>
+struct is_unbounded_array_impl : std::false_type { };
+
+template<typename _Tp>
+struct is_unbounded_array_impl<_Tp[]> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_unbounded_array_v = is_unbounded_array_impl<std::remove_reference_t<_Tp>>::value;
+
+template<typename _Tp>
+struct is_unbounded_array : std::bool_constant<is_unbounded_array_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline std::size_t size_of_v = sizeof(std::conditional_t<std::is_void_v<_Tp>, std::byte, std::conditional_t<is_unbounded_array_v<_Tp>, void*, _Tp>>);
+
+template<typename _Tp>
+struct size_of : std::integral_constant<std::size_t, size_of_v<_Tp>> { };
 
 
 template<typename _Tp>
@@ -157,6 +204,49 @@ using remove_reference_cv_t = std::remove_cv_t<std::remove_reference_t<_Tp>>;
 
 template<typename _Tp>
 using remove_pointer_cv_t = std::remove_cv_t<std::remove_pointer_t<_Tp>>;
+
+
+template<typename _Tp, typename... _Types>
+static constexpr inline bool is_any_of_v = (std::is_same_v<_Tp, _Types> || ...);
+
+template<typename _Tp, typename... _Types>
+struct is_any_of : std::bool_constant<is_any_of_v<_Tp, _Types...>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_pointer_v = std::is_pointer_v<std::remove_reference_t<_Tp>> || std::is_null_pointer_v<std::remove_reference_t<_Tp>>;
+
+template<typename _Tp>
+struct is_pointer : std::bool_constant<is_pointer_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_char_v = is_any_of_v<remove_reference_cv_t<_Tp>, char, signed char, unsigned char
+#if defined(__cpp_char8_t)
+    , char8_t
+#endif
+>;
+
+template<typename _Tp>
+struct is_char : std::bool_constant<is_char_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_char_pointer_v = std::is_pointer_v<std::decay_t<_Tp>> && is_any_of_v<remove_pointer_cv_t<std::decay_t<_Tp>>, char, signed char, unsigned char
+#if defined(__cpp_char8_t)
+    , char8_t
+#endif
+>;
+
+template<typename _Tp>
+struct is_char_pointer : std::bool_constant<is_char_pointer_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_integral_or_enum_v = std::is_integral_v<std::remove_reference_t<_Tp>> || std::is_enum_v<std::remove_reference_t<_Tp>>;
+
+template<typename _Tp>
+struct is_integral_or_enum : std::bool_constant<is_integral_or_enum_v<_Tp>> { };
 
 
 template<typename _Tp> struct promote_numeric_impl    { using type = _Tp; };
@@ -187,7 +277,7 @@ template<> struct promote_numeric_impl<char>          { using type = wchar_t; };
 #endif
 
 template<typename _Tp>
-struct promote_numeric { using type = typename promote_numeric_impl<std::remove_cv_t<_Tp>>::type; };
+struct promote_numeric { using type = typename promote_numeric_impl<remove_reference_cv_t<_Tp>>::type; };
 
 template<typename _Tp>
 using promote_numeric_t = typename promote_numeric<_Tp>::type;
@@ -195,14 +285,151 @@ using promote_numeric_t = typename promote_numeric<_Tp>::type;
 
 template<typename _Tp, typename = std::void_t<>>
 struct enum_underlying_type
-{ using type = _Tp; };
+{ using type = remove_reference_cv_t<_Tp>; };
     
 template<typename _Tp>
-struct enum_underlying_type<_Tp, std::enable_if_t<std::is_enum_v<_Tp>>>
-{ using type = std::underlying_type_t<_Tp>; };
+struct enum_underlying_type<_Tp, std::enable_if_t<std::is_enum_v<std::remove_reference_t<_Tp>>>>
+{ using type = std::underlying_type_t<std::remove_reference_t<_Tp>>; };
     
 template<typename _Tp>
 using enum_underlying_type_t = typename enum_underlying_type<_Tp>::type;
+
+
+template<typename _Tp>
+static constexpr inline bool is_signed_v = std::is_signed_v<enum_underlying_type_t<_Tp>>;
+
+template<typename _Tp>
+struct is_signed : std::bool_constant<is_signed_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_unsigned_v = std::is_unsigned_v<enum_underlying_type_t<_Tp>>;
+
+template<typename _Tp>
+struct is_unsigned : std::bool_constant<is_unsigned_v<_Tp>> { };
+
+
+template<typename _Tp>
+struct return_type_of
+{ using type = _Tp; };
+
+template<typename _Res, typename... _Args>
+struct return_type_of<_Res (_Args...)>
+{ using type = _Res; };
+
+template<typename _Res, typename... _Args>
+struct return_type_of<_Res (_Args...) noexcept>
+{ using type = _Res; };
+
+template<typename _Res, typename... _Args>
+struct return_type_of<_Res (*)(_Args...)>
+{ using type = _Res; };
+
+template<typename _Res, typename... _Args>
+struct return_type_of<_Res (*)(_Args...) noexcept>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...)>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) noexcept>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) const>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) const noexcept>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) volatile>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) volatile noexcept>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) const volatile>
+{ using type = _Res; };
+
+template<typename _Res, typename _Container, typename... _Args>
+struct return_type_of<_Res (_Container::*)(_Args...) const volatile noexcept>
+{ using type = _Res; };
+
+template<typename _Tp>
+using return_type_of_t = typename return_type_of<_Tp>::type;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct is_dereferenceable : std::false_type { };
+
+template<typename _Tp>
+struct is_dereferenceable<_Tp, std::void_t<decltype(*std::declval<_Tp&>())>> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_dereferenceable_v = is_dereferenceable<_Tp>::value;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct dereference
+{ using type = _Tp; };
+
+template<>
+struct dereference<void*>
+{ using type = void; };
+
+template<typename _Tp>
+struct dereference<_Tp, std::enable_if_t<is_dereferenceable_v<_Tp>>>
+{ using type = decltype(*std::declval<_Tp&>()); };
+
+template<typename _Tp>
+using dereference_t = typename dereference<_Tp>::type;
+
+
+template<typename _Tp>
+static constexpr inline std::size_t pointer_rank_v = 0;
+
+template<typename _Tp>
+static constexpr inline std::size_t pointer_rank_v<_Tp*> = pointer_rank_v<_Tp> + 1;
+
+template<typename _Tp>
+struct pointer_rank : std::integral_constant<std::size_t, pointer_rank_v<_Tp>> { };
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct rank : std::integral_constant<std::size_t, 0> { };
+
+template<typename _Tp>
+struct rank<_Tp, std::enable_if_t<is_dereferenceable_v<_Tp> && std::negation_v<std::is_same<dereference_t<_Tp>, _Tp>>>>
+    : std::integral_constant<std::size_t, rank<dereference_t<_Tp>>::value + 1> { };
+
+template<typename _Tp>
+struct rank<_Tp, std::enable_if_t<is_dereferenceable_v<_Tp> && std::is_same_v<dereference_t<_Tp>, _Tp>>>
+    : std::integral_constant<std::size_t, std::numeric_limits<std::size_t>::max()> { };
+
+template<typename _Tp>
+static constexpr inline std::size_t rank_v = rank<_Tp>::value;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct is_iterable : std::is_array<_Tp> { };
+
+template<typename _Tp>
+struct is_iterable<
+    _Tp,
+    std::void_t<
+        decltype(std::declval<_Tp>().begin()),
+        decltype(std::declval<_Tp>().end()),
+        decltype(*std::declval<_Tp>().begin()),
+        decltype(*std::declval<_Tp>().end())>> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_iterable_v = is_iterable<_Tp>::value;
 
 
 template<typename _Tp, typename = std::void_t<>>
@@ -218,69 +445,344 @@ static constexpr inline bool has_container_value_type_v = has_container_value_ty
 
 template<typename _Tp, typename = std::void_t<>>
 struct container_value_type
-{ using type = _Tp; };
+{ using type = std::remove_pointer_t<std::decay_t<_Tp>>; };
 
 template<typename _Tp>
-struct container_value_type<_Tp, std::void_t<typename std::remove_reference_t<_Tp>::value_type>>
-{ using type =  typename _Tp::value_type; };
+struct container_value_type<_Tp, std::enable_if_t<has_container_value_type_v<_Tp>>>
+{ using type = typename _Tp::value_type; };
+
+template<typename _Tp>
+struct container_value_type<_Tp, std::enable_if_t<!has_container_value_type_v<_Tp> && !std::is_array_v<_Tp> && is_iterable_v<_Tp>>>
+{ using type = decltype(*std::declval<_Tp&>().begin()); };
 
 template<typename _Tp>
 using container_value_type_t = typename container_value_type<_Tp>::type;
 
 
-template<typename _Tp>
-static constexpr inline bool is_std_array_v = std::is_same_v<
-                std::remove_reference_t<_Tp>,
-                std::array<detail::container_value_type_t<_Tp>, sizeof(std::remove_reference_t<_Tp>) / sizeof(detail::container_value_type_t<_Tp>)>>;
-
-
 template<typename _Tp, typename = std::void_t<>>
-struct is_iterable_container : std::false_type { };
+struct container_iterator
+{
+    using type =
+        std::add_pointer_t<
+            std::conditional_t<
+                std::is_void_v<container_value_type_t<_Tp>>,
+                std::byte,
+                container_value_type_t<_Tp>
+            >
+        >;
+};
 
 template<typename _Tp>
-struct is_iterable_container<
-    _Tp,
-    std::void_t<
-        decltype(std::declval<_Tp>().begin()),
-        decltype(std::declval<_Tp>().end())>> : std::true_type
-{ };
-
-template<typename _Tp>
-static constexpr inline bool is_iterable_container_v = is_iterable_container<_Tp>::value;
-
-
-template<typename _Tp, typename = std::void_t<>>
-struct container_iterator { using type = std::byte*; };
-
-template<typename _Tp>
-struct container_iterator<_Tp, std::void_t<typename _Tp::iterator>>
-{ using type = typename _Tp::iterator; };
+struct container_iterator<_Tp, std::void_t<typename std::remove_reference_t<_Tp>::iterator>>
+{ using type = typename std::remove_reference_t<_Tp>::iterator; };
 
 template<typename _Tp>
 using container_iterator_t = typename container_iterator<_Tp>::type;
 
 
+template<typename _Tp>
+using dereferenced_iterator_t = dereference_t<container_iterator_t<_Tp>>;
 
-template<typename _Container>
-[[nodiscard]] constexpr auto container_begin_iterator(void* __cp) noexcept
-        -> typename std::enable_if_t<is_iterable_container_v<_Container>, typename _Container::iterator>
-{ return reinterpret_cast<_Container*>(__cp)->begin(); }
 
-template<typename _Container>
-[[nodiscard]] constexpr auto  container_begin_iterator([[maybe_unused]] void* __cp) noexcept
-        -> typename std::enable_if_t<not_v<is_iterable_container_v<_Container>>, typename std::byte*>
-{ return nullptr; }
+template<typename _Tp, typename = std::void_t<>>
+struct has_container_data : std::false_type { };
 
-template<typename _Container>
-[[nodiscard]] constexpr auto container_end_iterator(void* __cp) noexcept
-        -> typename std::enable_if_t<is_iterable_container_v<_Container>, typename _Container::iterator>
-{ return reinterpret_cast<_Container*>(__cp)->end(); }
+template<typename _Tp>
+struct has_container_data<_Tp, std::void_t<decltype(std::declval<_Tp>().data())>> : std::true_type { };
 
-template<typename _Container>
-[[nodiscard]] constexpr auto container_end_iterator([[maybe_unused]] void* __cp) noexcept
-        -> typename std::enable_if_t<not_v<is_iterable_container_v<_Container>>, typename std::byte*>
-{ return nullptr; }
+template<typename _Tp>
+static constexpr inline bool has_container_data_v = has_container_data<_Tp>::value;
 
+
+template<typename _Tp, typename = std::void_t<>>
+struct has_container_size : std::false_type { };
+
+template<typename _Tp>
+struct has_container_size<_Tp, std::void_t<decltype(std::declval<_Tp>().size())>> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool has_container_size_v = has_container_size<_Tp>::value;
+
+
+template<typename _Tp>
+static constexpr inline bool is_std_array_v = std::is_same_v<
+                remove_reference_cv_t<_Tp>,
+                std::array<container_value_type_t<_Tp>, size_of_v<std::remove_reference_t<_Tp>> / size_of_v<container_value_type_t<_Tp>>>>;
+
+template<typename _Tp>
+struct is_std_array : std::bool_constant<is_std_array_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_std_vector_v = std::is_same_v<remove_reference_cv_t<_Tp>, std::vector<container_value_type_t<_Tp>>>;
+
+template<typename _Tp>
+struct is_std_vector : std::bool_constant<is_std_vector_v<_Tp>> { };
+
+
+template<typename _Tp>
+static constexpr inline bool is_std_string_v =
+    std::is_same_v<remove_reference_cv_t<_Tp>, std::basic_string<container_value_type_t<_Tp>>> &&
+    is_char_v<container_value_type_t<_Tp>>;
+
+template<typename _Tp>
+struct is_std_string : std::bool_constant<is_std_string_v<_Tp>> { };
+
+template<typename _Tp>
+static constexpr inline bool is_std_string_view_v =
+    std::is_same_v<remove_reference_cv_t<_Tp>, std::basic_string_view<container_value_type_t<_Tp>>> &&
+    is_char_v<container_value_type_t<_Tp>>;
+
+template<typename _Tp>
+struct is_std_string_view : std::bool_constant<is_std_string_view_v<_Tp>> { };
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct is_std_pair : std::false_type { };
+
+template<typename _Tp>
+struct is_std_pair<_Tp, std::enable_if_t<
+    std::is_same_v<
+        remove_reference_cv_t<_Tp>,
+        std::pair<typename remove_reference_cv_t<_Tp>::first_type, typename remove_reference_cv_t<_Tp>::second_type>>>>
+    : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_std_pair_v = is_std_pair<_Tp>::value;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct is_pair_like : std::false_type { };
+
+template<typename _Tp>
+struct is_pair_like<_Tp, std::enable_if_t<
+    std::conjunction_v<
+        std::is_same<typename std::remove_reference_t<_Tp>::first_type,  decltype(std::declval<std::remove_reference_t<_Tp>>().first)>,
+        std::is_same<typename std::remove_reference_t<_Tp>::second_type, decltype(std::declval<std::remove_reference_t<_Tp>>().second)>>>> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_pair_like_v = is_pair_like<_Tp>::value;
+
+
+template<typename _Tp, typename _FirstType, typename _SecondType>
+struct make_pair;
+
+template<template<typename...> typename _Tp, typename _FirstType, typename _SecondType, typename... _Ts>
+struct make_pair<_Tp<_Ts...>, _FirstType, _SecondType>
+{ using type = _Tp<_FirstType, _SecondType>; };
+
+template<typename _Tp, typename _FirstType, typename _SecondType>
+using make_pair_t = typename make_pair<_Tp, _FirstType, _SecondType>::type;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct remove_const_key
+{ using type = _Tp; };
+
+template<typename _Tp>
+struct remove_const_key<_Tp, std::enable_if_t<is_pair_like_v<_Tp>>>
+{ using type = make_pair_t<_Tp, std::remove_const_t<typename remove_reference_cv_t<_Tp>::first_type>, typename remove_reference_cv_t<_Tp>::second_type>; };
+
+template<typename _Tp>
+using remove_const_key_t = typename remove_const_key<_Tp>::type;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct remove_cv_pair
+{ using type = _Tp; };
+
+template<typename _Tp>
+struct remove_cv_pair<_Tp, std::enable_if_t<is_pair_like_v<_Tp>>>
+{ using type = make_pair_t<_Tp, std::remove_cv_t<typename remove_reference_cv_t<_Tp>::first_type>, std::remove_cv_t<typename remove_reference_cv_t<_Tp>::second_type>>; };
+
+template<typename _Tp>
+using remove_cv_pair_t = typename remove_cv_pair<_Tp>::type;
+
+
+template<typename _Tp>
+struct is_std_tuple_impl : std::false_type { };
+
+template<typename... _Ts>
+struct is_std_tuple_impl<std::tuple<_Ts...>> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_std_tuple_v = is_std_tuple_impl<remove_reference_cv_t<_Tp>>::value;
+
+template<typename _Tp>
+struct is_std_tuple : std::bool_constant<is_std_tuple_v<_Tp>> { };
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct has_tuple_elements : std::false_type { };
+
+template<typename _Tp>
+struct has_tuple_elements<_Tp, std::void_t<std::tuple_element_t<0, std::remove_reference_t<_Tp>>>> : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool has_tuple_elements_v = has_tuple_elements<_Tp>::value;
+
+
+template<typename _Tp, typename = std::void_t<>>
+struct is_tuple_like : std::false_type { };
+
+template<typename _Tp>
+struct is_tuple_like<_Tp, std::void_t<decltype(std::tuple_size<std::remove_reference_t<_Tp>>::value),
+    std::enable_if_t<std::disjunction_v<
+        std::negation<std::tuple_size<std::remove_reference_t<_Tp>>>,
+        has_tuple_elements<_Tp>
+>>>>
+    : std::true_type { };
+
+template<typename _Tp>
+static constexpr inline bool is_tuple_like_v = is_tuple_like<_Tp>::value;
+
+
+template<typename _Tp>
+struct first_of_tuple : std::tuple_element<0, remove_reference_cv_t<_Tp>> { };
+
+template<typename _Tp>
+using first_of_tuple_t = typename first_of_tuple<_Tp>::type;
+
+
+template<typename _Tp>
+struct second_of_tuple : std::tuple_element<1, remove_reference_cv_t<_Tp>> { };
+
+template<typename _Tp>
+using second_of_tuple_t = typename second_of_tuple<_Tp>::type;
+
+
+template<typename _Tp, typename _Up = _Tp, typename = std::void_t<>>
+struct is_equality_comparable : std::false_type { };
+
+template<typename _Tp, typename _Up>
+struct is_equality_comparable<_Tp, _Up, std::void_t<decltype(static_cast<bool>(std::declval<std::decay_t<_Tp>>() == std::declval<std::decay_t<_Up>>()))>> : std::true_type { };
+
+template<typename _Tp, typename _Up = _Tp>
+static constexpr inline bool is_equality_comparable_v = is_equality_comparable<_Tp, _Up>::value;
+
+
+template<typename _Tp, typename = std::void_t<>>
+union floating_point_layout
+{ static_assert(std::is_floating_point_v<_Tp>); };
+
+template<>
+union floating_point_layout<float>
+{
+    struct structure
+    {
+        std::uint32_t significand : 23;
+        std::uint32_t exponent    : 8;
+        std::uint32_t sign        : 1;
+    } s;
+
+    float f;
+
+    std::uint32_t n;
+
+    constexpr bool is_nan() const noexcept
+    { return s.exponent == (1 << 8) - 1 && s.significand != 0; }
+
+    constexpr bool is_inf() const noexcept
+    { return s.exponent == (1 << 8) - 1 && s.significand == 0; }
+
+    constexpr std::uint32_t significand() const noexcept
+    { return static_cast<std::uint32_t>(s.significand) | (1U << significand_bit()); }
+
+    constexpr int exponent() const noexcept
+    { return static_cast<int>(s.exponent) - bias(); }
+
+    constexpr bool is_negative() const noexcept
+    { return s.sign; }
+
+    static constexpr int significand_bit() noexcept
+    { return 23; }
+
+    static constexpr int bias() noexcept
+    { return 0b0111'1111; }
+};
+
+template<typename _Tp>
+union floating_point_layout<_Tp,
+    std::enable_if_t<
+        std::disjunction_v<
+            std::is_same<_Tp, double>,
+            std::conjunction<std::is_same<_Tp, long double>, std::bool_constant<sizeof(double) == sizeof(long double)>>>>>
+{
+    struct structure
+    {
+        std::uint64_t significand : 52;
+        std::uint64_t exponent    : 11;
+        std::uint64_t sign        : 1;
+    } s;
+
+    _Tp f;
+
+    std::uint64_t n;
+
+    constexpr bool is_nan() const noexcept
+    { return s.exponent == (1 << 11) - 1 && s.significand != 0; }
+
+    constexpr bool is_inf() const noexcept
+    { return s.exponent == (1 << 11) - 1 && s.significand == 0; }
+
+    constexpr std::uint64_t significand() const noexcept
+    { return static_cast<std::uint64_t>(s.significand) | (1ULL << significand_bit()); }
+
+    constexpr int exponent() const noexcept
+    { return static_cast<int>(s.exponent) - bias(); }
+
+    constexpr bool is_negative() const noexcept
+    { return s.sign; }
+
+    static constexpr int significand_bit() noexcept
+    { return 52; }
+
+    static constexpr int bias() noexcept
+    { return 0b0011'1111'1111; }
+};
+
+template<typename _Tp>
+union floating_point_layout<_Tp, std::enable_if_t<std::is_same_v<_Tp, long double> && sizeof(long double) != sizeof(double)>>
+{
+    struct structure
+    {
+        std::uint64_t significand : 63;
+        std::uint64_t integer     : 1;
+        std::uint64_t exponent    : 15;
+        std::uint64_t sign        : 1;
+
+        std::uint64_t : 48;
+    } s;
+
+    long double f;
+
+#if defined(_KWARGS_HAS_UINT128)
+    _KWARGS_UINT128 n;
+#else
+    std::uint64_t n;
+#endif
+
+    constexpr bool is_nan() const noexcept
+    { return s.exponent == (1 << 15) - 1 && s.significand != 0; }
+
+    constexpr bool is_inf() const noexcept
+    { return s.exponent == (1 << 15) - 1 && s.significand == 0; }
+
+    constexpr std::uint64_t significand() const noexcept
+    { return static_cast<std::uint64_t>(s.significand) | (static_cast<std::uint64_t>(s.integer) << significand_bit()); }
+
+    constexpr int exponent() const noexcept
+    { return static_cast<int>(s.exponent) - bias(); }
+
+    constexpr bool is_negative() const noexcept
+    { return s.sign; }
+
+    static constexpr int significand_bit() noexcept
+    { return 63; }
+
+    static constexpr int bias() noexcept
+    { return 0b0011'1111'1111'1111; }
+};
 
 
 /// .append()
@@ -313,7 +815,8 @@ struct has_pushback_member_function<
         : std::true_type { };
 
 template<typename _Container, typename _ValueType,
-    std::enable_if_t<has_pushback_member_function<_Container, _ValueType>::value &&
+    std::enable_if_t<
+        has_pushback_member_function<_Container, _ValueType>::value &&
         std::negation_v<has_append_member_function<_Container, _ValueType>>, int> = 0>
 constexpr void container_insert(_Container& __container, _ValueType&& __element) noexcept
 { __container.push_back(std::forward<_ValueType>(__element)); }
@@ -331,9 +834,11 @@ struct has_push_member_function<
         : std::true_type { };
 
 template<typename _Container, typename _ValueType,
-    std::enable_if_t<has_push_member_function<_Container, _ValueType>::value &&
-        std::negation_v<has_append_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_pushback_member_function<_Container, _ValueType>>, int> = 0>
+    std::enable_if_t<
+        has_push_member_function<_Container, _ValueType>::value &&
+        std::negation_v<std::disjunction<
+            has_append_member_function<_Container, _ValueType>,
+            has_pushback_member_function<_Container, _ValueType>>>, int> = 0>
 constexpr void container_insert(_Container& __container, _ValueType&& __element) noexcept
 { __container.push(std::forward<_ValueType>(__element)); }
 
@@ -350,10 +855,12 @@ struct has_insert_member_function<
         : std::true_type { };
 
 template<typename _Container, typename _ValueType,
-    std::enable_if_t<has_insert_member_function<_Container, _ValueType>::value &&
-        std::negation_v<has_append_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_pushback_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_push_member_function<_Container, _ValueType>>, int> = 0>
+    std::enable_if_t<
+        has_insert_member_function<_Container, _ValueType>::value &&
+        std::negation_v<std::disjunction<
+            has_append_member_function<_Container, _ValueType>,
+            has_pushback_member_function<_Container, _ValueType>,
+            has_push_member_function<_Container, _ValueType>>>, int> = 0>
 constexpr void container_insert(_Container& __container, _ValueType&& __element) noexcept
 { __container.insert(std::forward<_ValueType>(__element)); }
 
@@ -370,11 +877,13 @@ struct has_insert_with_end_member_function<
         : std::true_type { };
 
 template<typename _Container, typename _ValueType,
-    std::enable_if_t<has_insert_with_end_member_function<_Container, _ValueType>::value &&
-        std::negation_v<has_append_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_pushback_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_push_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_insert_member_function<_Container, _ValueType>>, int> = 0>
+    std::enable_if_t<
+        has_insert_with_end_member_function<_Container, _ValueType>::value &&
+        std::negation_v<std::disjunction<
+            has_append_member_function<_Container, _ValueType>,
+            has_pushback_member_function<_Container, _ValueType>,
+            has_push_member_function<_Container, _ValueType>,
+            has_insert_member_function<_Container, _ValueType>>>, int> = 0>
 constexpr void container_insert(_Container& __container, _ValueType&& __element) noexcept
 { __container.insert(__container.end(), std::forward<_ValueType>(__element)); }
 
@@ -390,27 +899,83 @@ struct has_pushfront_member_function<
     std::void_t<decltype(std::declval<_Container>().push_front(std::declval<_ValueType>()))>>
         : std::true_type { };
 
-template<typename _Container, typename _ValueType = container_value_type_t<_Container>>
-constexpr inline bool is_insertable_container_v =
-    has_container_value_type_v<_Container> && (
-    has_append_member_function<_Container, _ValueType>::value ||
-    has_pushback_member_function<_Container, _ValueType>::value ||
-    has_push_member_function<_Container, _ValueType>::value ||
-    has_insert_member_function<_Container, _ValueType>::value ||
-    has_insert_with_end_member_function<_Container, _ValueType>::value ||
-    has_pushfront_member_function<_Container, _ValueType>::value);
-
-
 template<typename _Container, typename _ValueType,
-    std::enable_if_t<has_pushfront_member_function<_Container, _ValueType>::value &&
-        std::negation_v<has_append_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_pushback_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_push_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_insert_member_function<_Container, _ValueType>> &&
-        std::negation_v<has_insert_with_end_member_function<_Container, _ValueType>>, int> = 0>
+    std::enable_if_t<
+        has_pushfront_member_function<_Container, _ValueType>::value &&
+        std::negation_v<std::disjunction<
+            has_append_member_function<_Container, _ValueType>,
+            has_pushback_member_function<_Container, _ValueType>,
+            has_push_member_function<_Container, _ValueType>,
+            has_insert_member_function<_Container, _ValueType>,
+            has_insert_with_end_member_function<_Container, _ValueType>>>, int> = 0>
 constexpr void container_insert(_Container& __container, _ValueType&& __element) noexcept
 { __container.push_front(std::forward<_ValueType>(__element)); }
 
+
+template<typename _Container, typename _ValueType = container_value_type_t<_Container>>
+constexpr inline bool is_insertable_container_v =
+    has_container_value_type_v<_Container> &&
+    std::disjunction_v<
+        has_append_member_function<_Container, _ValueType>,
+        has_pushback_member_function<_Container, _ValueType>,
+        has_push_member_function<_Container, _ValueType>,
+        has_insert_member_function<_Container, _ValueType>,
+        has_insert_with_end_member_function<_Container, _ValueType>,
+        has_pushfront_member_function<_Container, _ValueType>>;
+
+template<typename _Container>
+struct is_insertable_container : std::bool_constant<is_insertable_container_v<_Container>> { };
+
+
+#if defined(__clang__)
+#   pragma clang diagnostic pop  // unused variable '' [-Wunused-const-variable]
+#endif
+
+
+template<typename _Container>
+[[nodiscard]] constexpr auto container_begin_iterator(_Container& __c) noexcept
+        -> std::enable_if_t<is_iterable_v<_Container>, container_iterator_t<_Container>>
+{ return std::begin(__c); }
+
+template<typename _Container>
+[[nodiscard]] constexpr auto container_begin_iterator(_Container& __c) noexcept
+        -> std::enable_if_t<std::negation_v<is_iterable<_Container>>, container_iterator_t<_Container>>
+{ return container_iterator_t<_Container>(std::addressof(__c)); }
+
+template<typename _Container>
+[[nodiscard]] constexpr auto container_end_iterator(_Container& __c) noexcept
+        -> std::enable_if_t<is_iterable_v<_Container>, container_iterator_t<_Container>>
+{ return std::end(__c); }
+
+template<typename _Container>
+[[nodiscard]] constexpr auto container_end_iterator(_Container& __c) noexcept
+        -> std::enable_if_t<std::negation_v<is_iterable<_Container>>, container_iterator_t<_Container>>
+{ return container_iterator_t<_Container>(std::addressof(__c)) + 1; }
+
+
+template<typename _Tp>
+[[nodiscard]] constexpr auto as_non_cv(_Tp&& __value) noexcept
+        -> std::conditional_t<std::is_pointer_v<std::remove_reference_t<_Tp>>, std::add_pointer_t<remove_pointer_cv_t<std::remove_reference_t<_Tp>>>,  std::remove_cv_t<_Tp>> &&
+{ return const_cast<std::conditional_t<std::is_pointer_v<std::remove_reference_t<_Tp>>, std::add_pointer_t<remove_pointer_cv_t<std::remove_reference_t<_Tp>>>,  std::remove_cv_t<_Tp>>&&>(__value); }
+
+
+template<typename _Res, typename _Tp>
+[[nodiscard]] constexpr auto pointer_cast(_Tp* __ptr) noexcept
+{
+    using _ResultType = std::remove_reference_t<_Res>;
+    using result_type = std::conditional_t<is_pointer_v<_ResultType>, _ResultType, std::add_pointer_t<_ResultType>>;
+
+    return reinterpret_cast<result_type>(as_non_cv(__ptr));
+}
+
+template<typename _Res>
+[[nodiscard]] constexpr auto pointer_cast(std::nullptr_t) noexcept
+{
+    using _ResultType = std::remove_reference_t<_Res>;
+    using result_type = std::conditional_t<is_pointer_v<_ResultType>, _ResultType, std::add_pointer_t<_ResultType>>;
+
+    return reinterpret_cast<result_type>(nullptr);
+}
 
 
 template<typename _Tp>
@@ -527,6 +1092,30 @@ template<int _ResultOnFailure = -1>
     }
 }
 
+template<char _ResultOnFailure = -1>
+[[nodiscard]] constexpr char integer_to_radix_character(int __n) noexcept
+{
+    if (__n >= 0)
+    {
+        if (__n < 10)
+        {
+            return static_cast<char>('0' + __n);
+        }
+        else if (__n < 10 + 26)
+        {
+            return static_cast<char>('A' + __n - 10);
+        }
+    }
+
+    return _ResultOnFailure;
+}
+
+_KWARGS_Test_(integer_to_radix_character(9), '9');
+_KWARGS_Test_(integer_to_radix_character(10), 'A');
+_KWARGS_Test_(integer_to_radix_character(35), 'Z');
+_KWARGS_Test_(integer_to_radix_character(36), -1);
+
+
 [[nodiscard]] constexpr bool is_radix_character(char __c, int __radix = 36) noexcept
 {
     int res = radix_character_to_integer<-1>(__c);
@@ -534,7 +1123,7 @@ template<int _ResultOnFailure = -1>
     return res != -1 && res < __radix;
 }
 
-_KWARGS_Test_(is_radix_character('1', 2) && not_v<is_radix_character('2', 2)>);
+_KWARGS_Test_(is_radix_character('1', 2) && is_radix_character('2', 2) == false);
 _KWARGS_Test_(is_radix_character('z', 36) && is_radix_character('Z', 36));
 
 
@@ -593,6 +1182,10 @@ template<typename _Tp>
     {
         return __n;
     }
+    else if (__n == std::numeric_limits<_Tp>::min())
+    {
+        return static_cast<std::make_unsigned_t<_Tp>>(std::numeric_limits<_Tp>::min());
+    }
     else
     {
         return static_cast<std::make_unsigned_t<_Tp>>(__n < 0 ? -__n : __n);
@@ -600,7 +1193,11 @@ template<typename _Tp>
 }
 
 _KWARGS_Test_(abs(-1), static_cast<decltype(abs(-1))>(1));
-_KWARGS_Test_(abs(1),  static_cast<decltype(abs(-1))>(1));
+_KWARGS_Test_(abs(1),  static_cast<decltype(abs(1))>(1));
+
+_KWARGS_Test_(abs(std::numeric_limits<std::int64_t>::min()), static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::min()));
+_KWARGS_Test_(abs(std::numeric_limits<std::int64_t>::min()), static_cast<std::uint64_t>(~std::numeric_limits<std::int64_t>::min()) + 1);
+
 
 template<typename _Tp>
 [[nodiscard]] constexpr auto power10(std::make_signed_t<std::size_t> __i) noexcept -> std::enable_if_t<std::is_same_v<std::remove_cv_t<_Tp>, float>, _Tp>
@@ -849,10 +1446,88 @@ template<typename _Tp>
 template<typename _Tp, typename _Other = _Tp>
 constexpr _Tp exchange(_Tp& __value, _Other&& __newValue) noexcept
 {
-    _Tp old_value = std::move(__value);
+    _Tp old_value(std::move(__value));
     __value = std::forward<_Other>(__newValue);
 
     return old_value;
+}
+
+
+template<typename _Tp>
+constexpr void clamp(_Tp& __value, const _Tp& __lo, const _Tp& __hi) noexcept
+{
+    if (__value < __lo)
+    {
+        __value = __lo;
+    }
+    else if (__hi < __value)
+    {
+        __value = __hi;
+    }
+}
+
+
+template<typename _Ltp, typename _Rtp>
+#if defined(_MSC_VER)
+__declspec(noalias)
+#endif
+constexpr void bit_swap(_Ltp& __left, _Rtp& __right) noexcept
+{
+    static_assert(sizeof(_Ltp) == sizeof(_Rtp));
+
+    constexpr std::size_t length = sizeof(_Ltp);
+
+    union iterator
+    {
+        std::uint64_t* __restrict iter64;
+        std::uint64_t* __restrict iter32;
+        std::uint8_t * __restrict iter8;
+    };
+
+#if defined(_MSC_VER)
+#   pragma warning (push)
+#   pragma warning (disable: 6011)
+#endif
+
+    iterator lptr{ reinterpret_cast<std::uint64_t*>(std::addressof(__left))  };
+    iterator rptr{ reinterpret_cast<std::uint64_t*>(std::addressof(__right)) };
+
+    if constexpr (length >= sizeof(std::uint64_t))
+    {
+        for (std::size_t i = 0; i < length / sizeof(std::uint64_t); ++i, ++lptr.iter64, ++rptr.iter64)
+        {
+            *lptr.iter64 ^= *rptr.iter64;
+            *rptr.iter64 ^= *lptr.iter64;
+            *lptr.iter64 ^= *rptr.iter64;
+        }
+    }
+
+    if constexpr (length % sizeof(std::uint64_t) >= sizeof(std::uint32_t))
+    {
+        *lptr.iter32 ^= *rptr.iter32;
+        *rptr.iter32 ^= *lptr.iter32;
+        *lptr.iter32 ^= *rptr.iter32;
+
+        if constexpr (length % sizeof(std::uint32_t) >= sizeof(std::uint8_t))
+        {
+            ++lptr.iter32;
+            ++rptr.iter32;
+        }
+    }
+
+    if constexpr (length % sizeof(std::uint32_t) >= sizeof(std::uint8_t))
+    {
+        for (std::size_t i = 0; i < length % sizeof(std::uint32_t); ++i, ++lptr.iter8, ++rptr.iter8)
+        {
+            *lptr.iter8 ^= *rptr.iter8;
+            *rptr.iter8 ^= *lptr.iter8;
+            *lptr.iter8 ^= *rptr.iter8;
+        }
+    }
+
+#if defined(_MSC_VER)
+#   pragma warning (pop)
+#endif
 }
 
 
@@ -866,21 +1541,108 @@ constexpr void copy(_InputForwardIterator __first, _InputForwardIterator __last,
 }
 
 
-static constexpr const char* space_character_set = "\t\n\v\f\r ";
+template<typename _ForwardIterator, typename _Compare>
+constexpr bool is_sorted(_ForwardIterator __first, _ForwardIterator __last, _Compare __comp) noexcept
+{
+    if (__first == __last)
+    {
+        return true;
+    }
+
+    for (auto next = std::next(__first); next != __last; ++__first, ++next)
+    {
+        if (__comp(*next, *__first))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+template<typename _ForwardIterator>
+constexpr bool is_sorted(_ForwardIterator __first, _ForwardIterator __last) noexcept
+{
+    // Explicit namespace to prevent Intentional ADL
+    return __kwargs_detail is_sorted(__first, __last, std::less<>());
+}
+
+
+template<typename _RandomAccessIterator, typename _Tp, typename _Compare>
+constexpr bool binary_search(_RandomAccessIterator __first, _RandomAccessIterator __last, const _Tp& __value, _Compare __comp) noexcept
+{
+    while (__last - __first > 1)
+    {
+        auto middle = __first + (__last - __first) / 2;
+
+        if (!__comp(__value, *middle))
+            __first = middle;
+        else
+            __last = middle;
+    }
+
+    return !__comp(*__first, __value) && !__comp(__value, *__first);
+}
+
+template<typename _RandomAccessIterator, typename _Tp>
+constexpr bool binary_search(_RandomAccessIterator __first, _RandomAccessIterator __last, const _Tp& __value) noexcept
+{
+    // Explicit namespace to prevent Intentional ADL
+    return __kwargs_detail binary_search(__first, __last, __value, std::less<>());
+}
+
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 0); }(), false);
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 1); }());
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 2); }());
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 3); }());
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 4); }());
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 5); }());
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 6); }());
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 4, 5, 6}; return binary_search(std::begin(s), std::end(s), 7); }(), false);
+_KWARGS_Test_([]() constexpr noexcept -> bool { constexpr int s[] = {1, 2, 3, 5, 6, 9}; return binary_search(std::begin(s), std::end(s), 4); }(), false);
+
+constexpr bool is_space_character(char __c) noexcept
+{
+    constexpr char scs[]{'\0', '\t', '\n', '\v', '\f', '\r', ' '};
+    
+    static_assert(is_sorted(std::begin(scs), std::end(scs)));
+
+    return binary_search(std::begin(scs), std::end(scs), __c);
+}
+
+constexpr bool is_not_space_character(char __c) noexcept
+{
+    return !is_space_character(__c);
+}
+
+
+template<typename _ForwardIterator, typename _Predicate>
+constexpr _ForwardIterator find_if(_ForwardIterator __first, _ForwardIterator __last, _Predicate __pred) noexcept
+{
+    for (; __first != __last; ++__first)
+    {
+        if (__pred(*__first))
+        {
+            break;
+        }
+    }
+
+    return __first;
+}
 
 constexpr void string_view_left_trimmed(std::string_view& __sv) noexcept
 {
-    if (auto pos = __sv.find_first_not_of(space_character_set))
+    if (auto cnt = __kwargs_detail find_if(__sv.begin(), __sv.end(), is_not_space_character) - __sv.begin())
     {
-        __sv.remove_prefix(pos != std::string_view::npos ? pos : __sv.size());
+        __sv.remove_prefix(static_cast<std::size_t>(cnt));
     }
 }
 
 constexpr void string_view_right_trimmed(std::string_view& __sv) noexcept
 {
-    if (auto pos = __sv.find_last_not_of(space_character_set); __sv.size() && pos != __sv.size() - 1)
+    if (auto cnt = __kwargs_detail find_if(__sv.rbegin(), __sv.rend(), is_not_space_character) - __sv.rbegin())
     {
-        __sv.remove_suffix(pos != std::string_view::npos ? __sv.size() - 1 - pos : __sv.size());
+        __sv.remove_suffix(static_cast<std::size_t>(cnt));
     }
 }
 
@@ -893,16 +1655,100 @@ constexpr void string_view_trimmed(std::string_view& __sv) noexcept
 _KWARGS_Test_([]() constexpr noexcept -> bool { std::string_view sv = "  _ 5201314 _  "; string_view_trimmed(sv); return sv == "_ 5201314 _"; }());
 
 
-template<typename _Tp>
-[[nodiscard]] constexpr auto string_to_integer(std::string_view __str) noexcept -> std::enable_if_t<std::is_unsigned_v<_Tp>, _Tp>
+// high -> low
+template<typename _ForwardIterator, typename _RandomAccessIterator>
+constexpr std::size_t long_binary_to_decimal(_ForwardIterator __first, _ForwardIterator __last, _RandomAccessIterator __result, bool __char_mode = false)
 {
-    _Tp result = static_cast<_Tp>(0);
+    auto at = [&__result](auto i) constexpr noexcept -> std::add_lvalue_reference_t<decltype(*(__result + i))> {
+        return *(__result + i);
+    };
+
+    std::size_t digit_size = 1;
+    __result[0] = 0;
+
+    for (; __first != __last; ++__first)
+    {
+        bool bit = static_cast<bool>(*__first);
+        
+        // Multiply decimal digits by 2
+        int carry = 0;
+        for (std::size_t i = 0; i < digit_size; ++i)
+        {
+            int val = at(i) * 2 + carry;
+            at(i) = val % 10;
+            carry = val / 10;
+        }
+
+        if (carry)
+        {
+            at(digit_size++) = static_cast<std::remove_reference_t<decltype(at(std::declval<std::size_t>()))>>(carry);
+        }
+
+        // Add current bit
+        carry = bit;
+        for (std::size_t i = 0; i < digit_size; ++i)
+        {
+            int val = at(i) + carry;
+            at(i) = val % 10;
+            carry = val / 10;
+
+            if (carry == 0)
+            {
+                break;
+            }
+        }
+
+        if (carry)
+        {
+            at(digit_size++) = static_cast<std::remove_reference_t<decltype(at(std::declval<std::size_t>()))>>(carry);
+        }
+    }
+
+    // Reverse and map to characters
+    if (__char_mode)
+    {
+        for (std::size_t i = 0; i < digit_size / 2; ++i)
+        {
+            bit_swap(at(i), at(digit_size - i - 1));
+
+            at(i) += '0';
+            at(digit_size - i - 1) += '0';
+        }
+
+        if (digit_size & 1)
+        {
+            at(digit_size / 2) += '0';
+        }
+    }
+    else
+    {
+        for (std::size_t i = 0; i < digit_size / 2; ++i)
+        {
+            bit_swap(at(i), at(digit_size - i - 1));
+        }
+    }
+
+    return digit_size;
+}
+
+
+template<typename _Tp, std::enable_if_t<is_unsigned_v<_Tp>, int> = 0>
+[[nodiscard]] constexpr auto string_to_integer(std::string_view __str) noexcept
+{
+    using type = std::conditional_t<
+            std::is_same_v<remove_reference_cv_t<_Tp>, bool>,
+            std::uint8_t,
+            enum_underlying_type_t<remove_reference_cv_t<_Tp>>>;
+    
+    using result_type = std::remove_reference_t<_Tp>;
+
+    type result = static_cast<type>(0);
 
     string_view_trimmed(__str);
 
     if (__str.empty())
     {
-        return _Tp{};
+        return result_type{};
     }
 
     if (__str.front() == '+')
@@ -912,35 +1758,43 @@ template<typename _Tp>
 
         if (__str.empty())
         {
-            return _Tp{};
+            return result_type{};
         }
     }
 
 
     if (is_same_string_ignore_case(__str, "max"))
     {
-        return std::numeric_limits<_Tp>::max();
+        return static_cast<result_type>(std::numeric_limits<type>::max());
     }
     else if (is_same_string_ignore_case(__str, "min"))
     {
-        return std::numeric_limits<_Tp>::min();
+        return static_cast<result_type>(std::numeric_limits<type>::min());
+    }
+    else if (is_same_string_ignore_case(__str, "true"))
+    {
+        return static_cast<result_type>(true);
+    }
+    else if (is_same_string_ignore_case(__str, "false"))
+    {
+        return static_cast<result_type>(false);
     }
 
 
     if (__str.size() >= 2 && __str[0] == '0')
     {
-#define _KWARGS_Convert_to_decimal_from(__radix, __start)                        \
-            do                                                                   \
-            {                                                                    \
-                for (auto it = __start, last = __str.end(); it != last; ++it)    \
-                {                                                                \
-                    if (is_radix_character(*it, __radix) == false)               \
-                    {                                                            \
-                        return result;                                           \
-                    }                                                            \
-                    result = result * __radix + radix_character_to_integer(*it); \
-                }                                                                \
-                return result;                                                   \
+#define _KWARGS_Convert_to_decimal_from(__radix, __start)                                           \
+            do                                                                                      \
+            {                                                                                       \
+                for (auto it = __start, last = __str.end(); it != last; ++it)                       \
+                {                                                                                   \
+                    if (is_radix_character(*it, __radix) == false)                                  \
+                    {                                                                               \
+                        return static_cast<result_type>(result);                                    \
+                    }                                                                               \
+                    result = type(result * type(__radix) + type(radix_character_to_integer(*it)));  \
+                }                                                                                   \
+                return static_cast<result_type>(result);                                            \
             } while (false)
 
 
@@ -968,14 +1822,17 @@ template<typename _Tp>
 #undef _KWARGS_Convert_to_decimal_from
 }
 
-template<typename _Tp>
-[[nodiscard]] constexpr auto string_to_integer(std::string_view __str) noexcept -> std::enable_if_t<std::is_signed_v<_Tp>, _Tp>
+template<typename _Tp, std::enable_if_t<is_signed_v<_Tp>, int> = 0>
+[[nodiscard]] constexpr auto string_to_integer(std::string_view __str) noexcept
 {
+    using type = enum_underlying_type_t<remove_reference_cv_t<_Tp>>;
+    using result_type = std::remove_reference_t<_Tp>;
+
     string_view_trimmed(__str);
 
     if (__str.empty())
     {
-        return _Tp{};
+        return result_type{};
     }
 
     bool negative = false;
@@ -990,23 +1847,23 @@ template<typename _Tp>
         __str.remove_prefix(1);
     }
 
-    _Tp _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+    type _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
 
     if (is_same_string_ignore_case(__str, "max"))
     {
-        result = std::numeric_limits<_Tp>::max();
+        result = std::numeric_limits<type>::max();
     }
     else if (is_same_string_ignore_case(__str, "min"))
     {
-        result = std::numeric_limits<_Tp>::min();
+        result = std::numeric_limits<type>::min();
     }
     else
     {
-        result = static_cast<_Tp>(string_to_integer<std::make_unsigned_t<_Tp>>(__str));
+        result = static_cast<type>(string_to_integer<std::make_unsigned_t<type>>(__str));
     }
 
 
-    return negative ? -result : result;
+    return static_cast<result_type>(negative ? -result : result);
 }
 
 _KWARGS_Test_(string_to_integer<std::int32_t>("  "), 0);                      _KWARGS_Test_(string_to_integer<std::int32_t>("  -"), 0);
@@ -1027,11 +1884,14 @@ _KWARGS_Test_(string_to_integer<std::uint64_t>("min"), std::numeric_limits<std::
 
 
 template<typename _Tp>
-[[nodiscard]] constexpr auto string_to_floating_point(std::string_view __str) noexcept -> std::enable_if_t<std::is_floating_point_v<_Tp>, _Tp>
+[[nodiscard]] constexpr auto string_to_floating_point(std::string_view __str)  noexcept
+        -> std::enable_if_t<std::is_floating_point_v<std::remove_reference_t<_Tp>>, std::remove_reference_t<_Tp>>
 {
-    constexpr _Tp zero = static_cast<_Tp>(0);
-    constexpr _Tp one  = static_cast<_Tp>(1);
-    constexpr _Tp ten  = static_cast<_Tp>(10);
+    using result_type = remove_reference_cv_t<_Tp>;
+
+    constexpr auto zero = static_cast<result_type>(0);
+    constexpr auto one  = static_cast<result_type>(1);
+    constexpr auto ten  = static_cast<result_type>(10);
 
 
     if (string_view_trimmed(__str), __str.empty())
@@ -1042,7 +1902,7 @@ template<typename _Tp>
 
     bool negative = false;
 
-    auto $ = [&negative](_Tp __value) constexpr noexcept -> _Tp { return negative ? -__value : __value; };
+    auto $ = [&negative](result_type __value) constexpr noexcept -> result_type { return negative ? -__value : __value; };
 
     if (__str.front() == '-')
     {
@@ -1063,57 +1923,57 @@ template<typename _Tp>
 
     if (is_same_string_ignore_case(__str, "inf") || is_same_string_ignore_case(__str, "infinity"))
     {
-        return $(std::numeric_limits<_Tp>::infinity());
+        return $(std::numeric_limits<result_type>::infinity());
     }
     else if (is_same_string_ignore_case(__str, "nan"))
     {
-        return $(std::numeric_limits<_Tp>::quiet_NaN());
+        return $(std::numeric_limits<result_type>::quiet_NaN());
     }
     else if (is_same_string_ignore_case(__str, "max"))
     {
-        return $(std::numeric_limits<_Tp>::max());
+        return $(std::numeric_limits<result_type>::max());
     }
     else if (is_same_string_ignore_case(__str, "min"))
     {
-        return $(std::numeric_limits<_Tp>::min());
+        return $(std::numeric_limits<result_type>::min());
     }
     else if (is_same_string_ignore_case(__str, "pi"))
     {
 #if defined(_KWARGS_HAS_FLOAT128)
-        return $(static_cast<_Tp>(3.141592653589793238462643383279502884L));
+        return $(static_cast<result_type>(3.141592653589793238462643383279502884L));
 #else
-        return $(static_cast<_Tp>(3.141592653589793));
+        return $(static_cast<result_type>(3.141592653589793));
 #endif
     }
     else if (is_same_string_ignore_case(__str, "e"))
     {
 #if defined(_KWARGS_HAS_FLOAT128)
-        return $(static_cast<_Tp>(2.718281828459045235360287471352662498L));
+        return $(static_cast<result_type>(2.718281828459045235360287471352662498L));
 #else
-        return $(static_cast<_Tp>(2.718281828459045));
+        return $(static_cast<result_type>(2.718281828459045));
 #endif
     }
 
 
-    _Tp result = zero;
+    result_type result = zero;
 
     std::size_t i = 0;
 
     for (; i < __str.size() && __str[i] >= '0' && __str[i] <= '9'; ++i)
     {
-        result = result * ten + static_cast<_Tp>(__str[i] - '0');
+        result = result * ten + static_cast<result_type>(__str[i] - '0');
     }
 
 
     if (i < __str.size() && __str[i] == '.' && (++i, true))
     {
-        _Tp fractional_part = zero;
+        result_type fractional_part = zero;
         
-        _Tp power = one;
+        result_type power = one;
 
         for (; i < __str.size() && __str[i] >= '0' && __str[i] <= '9'; ++i, power *= 10)
         {
-            fractional_part = fractional_part * ten + static_cast<_Tp>(__str[i] - '0');
+            fractional_part = fractional_part * ten + static_cast<result_type>(__str[i] - '0');
         }
         
         result += fractional_part / power;
@@ -1122,7 +1982,7 @@ template<typename _Tp>
 
     if (i < __str.size() && is_same_char_ignore_case(__str[i], 'e') && ++i < __str.size())
     {
-        result *= power10<_Tp>(string_to_integer<std::int64_t>(__str.substr(i)));
+        result *= power10<result_type>(string_to_integer<std::int64_t>(__str.substr(i)));
     }
 
     return $(result);
@@ -1147,15 +2007,232 @@ _KWARGS_Test_(string_to_floating_point<long double>("1e-4932"), 1e-4932L);
 
 template<typename _Tp>
 [[nodiscard]] constexpr auto string_to_number(std::string_view __str) noexcept
-        -> std::enable_if_t<std::disjunction_v<std::is_integral<_Tp>, std::is_floating_point<_Tp>>, _Tp>
+        -> std::enable_if_t<std::disjunction_v<is_integral_or_enum<std::remove_reference_t<_Tp>>, std::is_floating_point<std::remove_reference_t<_Tp>>>, std::remove_reference_t<_Tp>>
 {
-    if constexpr (std::is_integral_v<_Tp>)
+    using result_type = std::remove_reference_t<_Tp>;
+
+    if constexpr (std::is_integral_v<result_type>)
     {
-        return string_to_integer<_Tp>(__str);
+        return string_to_integer<result_type>(__str);
     }
     else
     {
-        return string_to_floating_point<_Tp>(__str);
+        return string_to_floating_point<result_type>(__str);
+    }
+}
+
+
+template<typename _Res, typename _Tp>
+[[nodiscard]] constexpr auto integer_to_string(_Tp __n, int __radix = 10) noexcept
+        -> std::enable_if_t<is_std_string_v<_Res> && is_integral_or_enum_v<_Tp>, std::remove_reference_t<_Res>>
+{
+    clamp<int>(__radix, 2, 36);
+
+    constexpr std::size_t buffer_size = 20;
+
+    char _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(buffer[buffer_size]);
+
+    std::size_t cpos = buffer_size;
+
+    bool sign = (detail::is_signed_v<_Tp> && __n < 0);
+
+    while (__n)
+    {
+        buffer[--cpos] = integer_to_radix_character(static_cast<int>(abs(__n % __radix)));
+        __n /= static_cast<_Tp>(__radix);
+    }
+
+    if (sign)
+    {
+        buffer[--cpos] = '-';
+    }
+    else if (cpos == buffer_size)
+    {
+        buffer[--cpos] = '0';
+    }
+
+    return std::remove_reference_t<_Res>(static_cast<std::decay_t<decltype(buffer)>>(buffer) + cpos, buffer_size - cpos);
+}
+
+template<typename _Res, typename _Tp>
+[[nodiscard]] constexpr auto floating_point_to_string(_Tp __n) noexcept
+        -> std::enable_if_t<is_std_string_v<_Res> && std::is_floating_point_v<_Tp>, std::remove_reference_t<_Res>>
+{
+    floating_point_layout<_Tp> value;
+    value.f = __n;
+
+    if (value.is_nan())
+    {
+        return std::remove_reference_t<_Res>("NaN");
+    }
+    else if (value.is_inf())
+    {
+        if (value.is_negative())
+        {
+            return std::remove_reference_t<_Res>("-inf");
+        }
+        else
+        {
+            return std::remove_reference_t<_Res>("inf");
+        }
+    }
+
+    constexpr std::size_t buffer_size = conditional_value_v<sizeof(_Tp) == sizeof(float), 50, conditional_value_v<sizeof(_Tp) == sizeof(double), 400, 5000>>;
+
+    char _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(buffer[buffer_size]);
+
+    std::size_t cpos = 0;
+
+    if (value.is_negative())
+    {
+        buffer[cpos++] = '-';
+        value.s.sign = false;
+    }
+
+    int exponent = value.exponent();
+
+    std::uint64_t significand = value.significand();
+
+    if (exponent < 0)
+    {
+        buffer[cpos++] = '0';
+    }
+    else
+    {
+        std::array<std::uint8_t, value.bias() + 1> bits { };
+
+        for (std::size_t i = 0; significand; ++i, significand >>= 1)
+        {
+            bits[i] = significand & 1;
+        }
+
+        int shift = value.significand_bit() - exponent;
+
+        value.s.exponent = static_cast<decltype(value.s.exponent)>(value.bias());
+
+        if (shift > 0)
+        {
+            value.s.significand &= (1ULL << shift) - 1;
+            value.s.significand <<= exponent;
+            
+            for (std::size_t i = 0; i < bits.size() - shift; ++i)
+            {
+                bits[i] = bits[i + shift];
+            }
+
+            for (std::size_t i = bits.size() - shift; i < bits.size(); ++i)
+            {
+                bits[i] = 0;
+            }
+        }
+        else if (shift < 0)
+        {
+            value.s.significand = 0;
+
+            shift = static_cast<int>(abs(shift));
+
+            for (std::size_t i = bits.size() - 1; i >= static_cast<std::size_t>(shift); --i)
+            {
+                bits[i] = bits[i - shift];
+            }
+
+            for (std::size_t i = 0; i < static_cast<std::size_t>(shift); ++i)
+            {
+                bits[i] = 0;
+            }
+        }
+
+        cpos += long_binary_to_decimal(bits.rbegin(), bits.rend(), buffer + cpos, true);
+
+        --value.f;
+    }
+
+    if (value.f)
+    {
+        buffer[cpos++] = '.';
+    }
+
+    auto check = [&]() constexpr noexcept -> bool {
+#if defined(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_HEURISTIC_PRECISION)
+        if (exponent < 0)
+        {
+            return static_cast<bool>(value.f);
+        }
+#endif
+
+#if defined(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_FLOAT_PRECISION)
+        if constexpr (std::is_same_v<_Tp, float>)
+        {
+            return value.f > static_cast<float>(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_FLOAT_PRECISION);
+        }
+#endif
+
+#if defined(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_DOUBLE_PRECISION)
+        if constexpr (std::is_same_v<_Tp, double>)
+        {
+            return value.f > static_cast<double>(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_DOUBLE_PRECISION);
+        }
+#endif
+
+#if defined(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_LONG_DOUBLE_PRECISION)
+        if constexpr (std::is_same_v<_Tp, long double>)
+        {
+            return value.f > static_cast<long double>(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_LONG_DOUBLE_PRECISION);
+        }
+#endif
+
+#if defined(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_PRECISION)
+        return value.f > static_cast<_Tp>(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_FIXED_PRECISION);
+#elif defined(KWARGS_CONVERT_REALS_TO_STRINGS_WITH_HEURISTIC_PRECISION)
+        if constexpr (sizeof(_Tp) == sizeof(float))
+        {
+            return value.f > 1e-6f;
+        }
+        else if constexpr (sizeof(_Tp) == sizeof(double))
+        {
+            return value.f > 1e-12;
+        }
+        else
+        {
+            return value.f > 1e-18L;
+        }
+#else
+        return static_cast<bool>(value.f);
+#endif
+    };
+
+
+    while (check() && cpos < buffer_size)
+    {
+        value.f *= 10;
+        buffer[cpos++] = '0' + static_cast<char>(value.f);
+
+        value.f -= static_cast<decltype(value.f)>(static_cast<int>(value.f));
+    }
+
+    return std::remove_reference_t<_Res>(static_cast<std::decay_t<decltype(buffer)>>(buffer), cpos);
+}
+
+template<typename _Res, typename _Tp>
+[[nodiscard]] constexpr auto pointer_to_string(const _Tp* __n) noexcept
+    -> std::enable_if_t<is_std_string_v<_Res>, std::remove_reference_t<_Res>>
+{ return integer_to_string<_Res>(reinterpret_cast<std::uintptr_t>(__n), 16); }
+
+template<typename _Res, typename _Tp>
+[[nodiscard]] constexpr auto number_to_string(_Tp __n) noexcept
+        -> std::enable_if_t<is_std_string_v<_Res> && std::disjunction_v<is_integral_or_enum<_Tp>, std::is_floating_point<_Tp>, is_pointer<_Tp>>, std::remove_reference_t<_Res>>
+{
+    if constexpr (std::is_integral_v<_Tp>)
+    {
+        return integer_to_string<_Res>(__n);
+    }
+    else if constexpr (std::is_floating_point_v<_Tp>)
+    {
+        return floating_point_to_string<_Res>(__n);
+    }
+    else
+    {
+        return pointer_to_string<_Res>(__n);
     }
 }
 
@@ -1173,7 +2250,7 @@ static_assert(is_prime(string_hash_base)
 #if !defined(_KWARGS_HAS_UINT128)
         || string_hash_base > 0x100000000ULL
 #endif  
-        , "cpp-kwargs: 'base' must be a prime number.");
+        , "cpp-kwargs: 'string_hash_base' must be a prime number.");
 
 static_assert(is_prime(string_hash_mod)
 #if !defined(_KWARGS_HAS_UINT128)
@@ -1198,9 +2275,9 @@ constexpr string_hash_type string_hash_character() noexcept
 
 constexpr string_hash_type string_hash_append(string_hash_type __previous, char __c) noexcept
 {
-    // Define KWARGSKEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey.
+    // Define KWARGS_KEY_CASE_INSENSITIVE to enable case-insensitivity for KwargsKey.
 
-#if defined(KWARGSKEY_CASE_INSENSITIVE)
+#if defined(KWARGS_KEY_CASE_INSENSITIVE)
     __c = tolower(__c);
 #endif
 
@@ -1263,11 +2340,518 @@ constexpr string_hash_type string_hash_string(std::string_view __str) noexcept
 #undef _KWARGS_HAS_FLOAT128
 
 
+class Type
+{
+private:
+
+    enum class NextTypeFlag : std::int32_t
+    {
+        Underlying,
+        PromoteNumeric,
+        ValueType,
+        DereferencedIterator,
+        Dereference,
+        ReturnValue,
+        Iterator,
+        PairFirstType,
+        PairSecondType
+    };
+
+    template<typename _Tp>
+    static constexpr Type _S_nextType(NextTypeFlag __flag) noexcept
+    {
+        switch (__flag)
+        {
+            case NextTypeFlag::Underlying:
+            {
+                return Type().construct<detail::enum_underlying_type_t<_Tp>>();
+            }
+
+            case NextTypeFlag::PromoteNumeric:
+            {
+                return Type().construct<detail::promote_numeric_t<_Tp>>();
+            }
+
+            case NextTypeFlag::ValueType:
+            {
+                return Type().construct<detail::container_value_type_t<_Tp>>();
+            }
+
+            case NextTypeFlag::DereferencedIterator:
+            {
+                return Type().construct<detail::dereferenced_iterator_t<_Tp>>();
+            }
+
+            case NextTypeFlag::Dereference:
+            {
+                return Type().construct<detail::dereference_t<_Tp>>();
+            }
+
+            case NextTypeFlag::ReturnValue:
+            {
+                return Type().construct<detail::return_type_of_t<_Tp>>();
+            }
+
+            case NextTypeFlag::Iterator:
+            {
+                return Type().construct<detail::container_iterator_t<_Tp>>();
+            }
+
+            case NextTypeFlag::PairFirstType:
+            {
+                if constexpr (detail::is_tuple_like_v<_Tp>)
+                {
+                    if constexpr (std::tuple_size_v<std::remove_reference_t<_Tp>> >= 1)
+                    {
+                        return Type().construct<detail::first_of_tuple_t<_Tp>>();
+                    }
+                    else
+                    {
+                        return Type().construct<_Tp>();
+                    }
+                }
+                else
+                {
+                    return Type().construct<_Tp>();
+                }
+            }
+
+            case NextTypeFlag::PairSecondType:
+            {
+                if constexpr (detail::is_tuple_like_v<_Tp>)
+                {
+                    if constexpr (std::tuple_size_v<std::remove_reference_t<_Tp>> >= 2)
+                    {
+                        return Type().construct<detail::second_of_tuple_t<_Tp>>();
+                    }
+                    else
+                    {
+                        return Type().construct<_Tp>();
+                    }
+                }
+                else
+                {
+                    return Type().construct<_Tp>();
+                }
+            }
+
+            default:
+            {
+                return Type().construct<_Tp>();
+            }
+        }
+    }
+
+public:
+
+    using size_type = detail::return_type_of_t<decltype(&std::type_info::hash_code)>;
+
+    static_assert(sizeof(size_type) == sizeof(void*));
+
+    /**
+     * @brief Initializes all member variables to default values.
+     */
+    constexpr Type() noexcept
+        : _M_hash(0), _M_size(0), _M_next(nullptr)
+        , _M_rank(0)
+        , _M_is_lvalue_ref(0)
+        , _M_is_rvalue_ref(0)
+        , _M_is_const(0)
+        , _M_is_volatile(0)
+        , _M_is_signed(0)
+        , _M_is_unsigned(0)
+        , _M_is_integral(0)
+        , _M_is_floating_point(0)
+        , _M_is_char(0)
+        , _M_is_enum(0)
+        , _M_is_class(0)
+        , _M_is_union(0)
+        , _M_is_pointer(0)
+        , _M_is_null_pointer(0)
+        , _M_is_char_pointer(0)
+        , _M_is_function(0)
+        , _M_is_member_function(0)
+        , _M_is_member_object(0)
+        , _M_is_array(0)
+        , _M_is_bounded_array(0)
+        , _M_is_std_array(0)
+        , _M_is_std_vector(0)
+        , _M_is_std_string(0)
+        , _M_is_std_string_view(0)
+        , _M_is_std_pair(0)
+        , _M_is_pair_like(0)
+        , _M_is_std_tuple(0)
+        , _M_is_tuple_like(0)
+        , _M_is_iterable(0)
+        , _M_is_insertable(0)
+        , _M_has_value_type(0)
+        , _M_has_data(0)
+    { }
+
+    /**
+     * @brief  Constructs the Type object based on the provided type.
+     * 
+     * @tparam _Tp The type to construct the Type object for.
+     * 
+     * @return Reference to the constructed Type object (*this).
+     */
+    template<typename _Tp>
+    constexpr Type& construct() noexcept
+    {
+        using type = detail::remove_cv_pair_t<detail::remove_reference_cv_t<_Tp>>;
+
+        _M_hash = typeid(type).hash_code();
+        _M_size = detail::size_of_v<type>;
+        _M_next = &Type::_S_nextType<type>;
+        _M_name = detail::type_name<_Tp>();
+
+        _M_rank               = detail::rank_v<type>;
+
+        _M_is_lvalue_ref      = std::is_lvalue_reference_v<_Tp>;
+        _M_is_rvalue_ref      = std::is_rvalue_reference_v<_Tp>;
+
+        _M_is_const           = std::is_const_v<std::remove_reference_t<_Tp>>;
+        _M_is_volatile        = std::is_volatile_v<std::remove_reference_t<_Tp>>;
+        
+        _M_is_signed          = detail::is_signed_v<type>;
+        _M_is_unsigned        = detail::is_unsigned_v<type>;
+        _M_is_integral        = std::is_integral_v<type>;
+        _M_is_floating_point  = std::is_floating_point_v<type>;
+        _M_is_char            = detail::is_char_v<type>;
+        _M_is_enum            = std::is_enum_v<type>;
+        
+        _M_is_class           = std::is_class_v<type>;
+        _M_is_union           = std::is_union_v<type>;
+        _M_is_pointer         = detail::is_pointer_v<type>;
+        _M_is_null_pointer    = std::is_null_pointer_v<type>;
+        _M_is_char_pointer    = detail::is_char_pointer_v<type>;
+        _M_is_function        = std::is_function_v<type>;
+        _M_is_member_function = std::is_member_function_pointer_v<type>;
+        _M_is_member_object   = std::is_member_object_pointer_v<type>;
+
+        _M_is_array           = std::is_array_v<type>;
+        _M_is_bounded_array   = detail::is_bounded_array_v<type>;
+        _M_is_std_array       = detail::is_std_array_v<type>;
+        _M_is_std_vector      = detail::is_std_vector_v<type>;
+        _M_is_std_string      = detail::is_std_string_v<type>;
+        _M_is_std_string_view = detail::is_std_string_view_v<type>;
+        _M_is_std_pair        = detail::is_std_pair_v<type>;
+        _M_is_pair_like       = detail::is_pair_like_v<type>;
+        _M_is_std_tuple       = detail::is_std_tuple_v<type>;
+        _M_is_tuple_like      = detail::is_tuple_like_v<type>;
+
+        _M_is_iterable        = detail::is_iterable_v<type>;
+        _M_is_insertable      = detail::is_insertable_container_v<type>;
+        _M_has_value_type     = detail::has_container_value_type_v<type>;
+        _M_has_data           = detail::has_container_data_v<type>;
+
+        return *this;
+    }
+
+    /**
+     * @brief  Checks whether the current Type matches the provided type.
+     * 
+     * @tparam _Tp The type to compare against.
+     * 
+     * @return True if the types match, false otherwise.
+     */
+    template<typename _Tp>
+    [[nodiscard]] constexpr bool isSameAs() const noexcept
+    { return _M_hash == typeid(detail::remove_cv_pair_t<detail::remove_reference_cv_t<_Tp>>).hash_code(); }
+
+    /**
+     * @brief  Checks whether the current Type matches any of the provided types.
+     * 
+     * @tparam _Args The types to compare against.
+     * 
+     * @return True if the Type matches any of the provided types, false otherwise.
+     */
+    template<typename... _Args>
+    [[nodiscard]] constexpr bool isAnyOf() const noexcept
+    {
+        if constexpr (sizeof...(_Args) == 0)
+        {
+            return false;
+        }
+        else
+        {
+            return (... || isSameAs<_Args>());
+        }
+    }
+
+
+    [[nodiscard]] constexpr bool operator==(const Type& __other) const noexcept
+    { return _M_hash == __other._M_hash; }
+
+    [[nodiscard]] constexpr bool operator!=(const Type& __other) const noexcept
+    { return _M_hash != __other._M_hash; }
+
+    [[nodiscard]] constexpr bool operator<(const Type& __other) const noexcept
+    { return _M_size < __other._M_size; }
+
+    [[nodiscard]] constexpr bool operator<=(const Type& __other) const noexcept
+    { return _M_size <= __other._M_size; }
+
+    [[nodiscard]] constexpr bool operator>(const Type& __other) const noexcept
+    { return _M_size > __other._M_size; }
+
+    [[nodiscard]] constexpr bool operator>=(const Type& __other) const noexcept
+    { return _M_size >= __other._M_size; }
+
+    /**
+     * @brief  Converts the Type object to its hash code.
+     * 
+     * @return The hash code of the Type.
+     */
+    [[nodiscard]] constexpr operator size_type() const noexcept
+    { return _M_hash; }
+
+    /**
+     * @brief  Checks whether the Type object has been constructed.
+     * 
+     * @return True if the Type object is constructed, false otherwise.
+     */
+    [[nodiscard]] constexpr operator bool() const noexcept
+    { return !_M_name.empty(); }
+
+    /**
+     * @brief  Retrieves the hash code of the Type.
+     * 
+     * @return The hash code of the Type.
+     */
+    [[nodiscard]] constexpr size_type hashCode() const noexcept
+    { return _M_hash; }
+
+     /**
+     * @brief  Retrieves the size of the Type.
+     * 
+     * @return The size of the Type in bytes.
+     */
+    [[nodiscard]] constexpr size_type size() const noexcept
+    { return _M_size; }
+
+    /**
+     * @brief  Retrieves the rank of the Type.
+     * 
+     * @return The rank of the Type.
+     */
+    [[nodiscard]] constexpr size_type rank() const noexcept
+    { return _M_rank; }
+
+
+    [[nodiscard]] constexpr bool isReference() const noexcept
+    { return _M_is_lvalue_ref || _M_is_rvalue_ref; }
+
+    [[nodiscard]] constexpr bool isLeftValueReference() const noexcept
+    { return _M_is_lvalue_ref; }
+
+    [[nodiscard]] constexpr bool isRightValueReference() const noexcept
+    { return _M_is_rvalue_ref; }
+
+
+    [[nodiscard]] constexpr bool isConst() const noexcept
+    { return _M_is_const; }
+
+    [[nodiscard]] constexpr bool isVolatile() const noexcept
+    { return _M_is_volatile; }
+
+    [[nodiscard]] constexpr bool isSigned() const noexcept
+    { return _M_is_signed; }
+
+    [[nodiscard]] constexpr bool isUnsigned() const noexcept
+    { return _M_is_unsigned; }
+
+    [[nodiscard]] constexpr bool isIntegral() const noexcept
+    { return _M_is_integral; }
+
+    [[nodiscard]] constexpr bool isIntegralOrEnum() const noexcept
+    { return _M_is_integral || _M_is_enum; }
+
+    [[nodiscard]] constexpr bool isFloatingPoint() const noexcept
+    { return _M_is_floating_point; }
+
+    [[nodiscard]] constexpr bool isCharacter() const noexcept
+    { return _M_is_char; }
+
+    [[nodiscard]] constexpr bool isEnum() const noexcept
+    { return _M_is_enum; }
+
+    [[nodiscard]] constexpr bool isClass() const noexcept
+    { return _M_is_class; }
+
+    [[nodiscard]] constexpr bool isStruct() const noexcept
+    { return _M_is_class; }
+
+    [[nodiscard]] constexpr bool isUnion() const noexcept
+    { return _M_is_union; }
+
+    [[nodiscard]] constexpr bool isPointer() const noexcept
+    { return _M_is_pointer; }
+
+    [[nodiscard]] constexpr bool isNullPointer() const noexcept
+    { return _M_is_null_pointer; }
+
+    [[nodiscard]] constexpr bool isCharacterPointer() const noexcept
+    { return _M_is_char_pointer; }
+
+    [[nodiscard]] constexpr bool isFunction() const noexcept
+    { return _M_is_function; }
+
+    [[nodiscard]] constexpr bool isMemberFunctionPointer() const noexcept
+    { return _M_is_member_function; }
+
+    [[nodiscard]] constexpr bool isMemberObjectPointer() const noexcept
+    { return _M_is_member_object; }
+
+    [[nodiscard]] constexpr bool isArray() const noexcept
+    { return _M_is_array; }
+
+    [[nodiscard]] constexpr bool isBoundedArray() const noexcept
+    { return _M_is_bounded_array; }
+
+    [[nodiscard]] constexpr bool isUnboundedArray() const noexcept
+    { return _M_is_array && !_M_is_bounded_array; }
+
+    [[nodiscard]] constexpr bool isStdArray() const noexcept
+    { return _M_is_std_array; }
+
+    [[nodiscard]] constexpr bool isStdVector() const noexcept
+    { return _M_is_std_vector; }
+
+    [[nodiscard]] constexpr bool isStdString() const noexcept
+    { return _M_is_std_string; }
+
+    [[nodiscard]] constexpr bool isStdStringView() const noexcept
+    { return _M_is_std_string_view; }
+
+    [[nodiscard]] constexpr bool isStdPair() const noexcept
+    { return _M_is_std_pair; }
+
+    [[nodiscard]] constexpr bool isPairLike() const noexcept
+    { return _M_is_pair_like; }
+
+    [[nodiscard]] constexpr bool isStdTuple() const noexcept
+    { return _M_is_std_tuple; }
+
+    [[nodiscard]] constexpr bool isTupleLike() const noexcept
+    { return _M_is_tuple_like; }
+
+    [[nodiscard]] constexpr bool isIterable() const noexcept
+    { return _M_is_iterable; }
+
+    [[nodiscard]] constexpr bool isInsertable() const noexcept
+    { return _M_is_insertable; }
+
+    /**
+     * @brief  Checks whether the Type has a value_type.
+     * 
+     * @return True if the Type has a value_type, false otherwise.
+     */
+    [[nodiscard]] constexpr bool hasValueType() const noexcept
+    { return _M_has_value_type; }
+
+    /**
+     * @brief  Checks whether the Type has a data member.
+     * 
+     * @return True if the Type has a data member, false otherwise.
+     */
+    [[nodiscard]] constexpr bool hasData() const noexcept
+    { return _M_has_data; }
+
+
+    [[nodiscard]] constexpr Type underlyingType() const noexcept
+    { return _M_next(NextTypeFlag::Underlying); }
+
+    [[nodiscard]] constexpr Type promoteNumericType() const noexcept
+    { return _M_next(NextTypeFlag::PromoteNumeric); }
+
+    [[nodiscard]] constexpr Type valueType() const noexcept
+    { return _M_next(NextTypeFlag::ValueType); }
+
+    [[nodiscard]] constexpr Type dereferencedIteratorType() const noexcept
+    { return _M_next(NextTypeFlag::DereferencedIterator); }
+
+    [[nodiscard]] constexpr Type dereferenceType() const noexcept
+    { return _M_next(NextTypeFlag::Dereference); }
+
+    [[nodiscard]] constexpr Type returnValueType() const noexcept
+    { return _M_next(NextTypeFlag::ReturnValue); }
+
+    [[nodiscard]] constexpr Type iteratorType() const noexcept
+    { return _M_next(NextTypeFlag::Iterator); }
+
+    /**
+     * @brief  Retrieves the first type of the Type if it is tuple-like.
+     * 
+     * @return The first Type.
+     */
+    [[nodiscard]] constexpr Type firstType() const noexcept
+    { return _M_next(NextTypeFlag::PairFirstType); }
+
+    /**
+     * @brief  Retrieves the second type of the Type if it is tuple-like.
+     * 
+     * @return The second Type.
+     */
+    [[nodiscard]] constexpr Type secondType() const noexcept
+    { return _M_next(NextTypeFlag::PairSecondType); }
+
+private:
+
+    size_type _M_hash;
+    size_type _M_size;
+
+    Type (*_M_next)(NextTypeFlag);
+    std::string_view _M_name;
+
+    size_type _M_rank               : 4;
+
+    size_type _M_is_lvalue_ref      : 1;
+    size_type _M_is_rvalue_ref      : 1;
+
+    size_type _M_is_const           : 1;
+    size_type _M_is_volatile        : 1;
+
+    size_type _M_is_signed          : 1;
+    size_type _M_is_unsigned        : 1;
+    size_type _M_is_integral        : 1;
+    size_type _M_is_floating_point  : 1;
+    size_type _M_is_char            : 1;
+    size_type _M_is_enum            : 1;
+
+    size_type _M_is_class           : 1;
+    size_type _M_is_union           : 1;
+    size_type _M_is_pointer         : 1;
+    size_type _M_is_null_pointer    : 1;
+    size_type _M_is_char_pointer    : 1;
+    size_type _M_is_function        : 1;
+    size_type _M_is_member_function : 1;
+    size_type _M_is_member_object   : 1;
+
+    size_type _M_is_array           : 1;
+    size_type _M_is_bounded_array   : 1;
+    size_type _M_is_std_array       : 1;
+    size_type _M_is_std_vector      : 1;
+    size_type _M_is_std_string      : 1;
+    size_type _M_is_std_string_view : 1;
+    size_type _M_is_std_pair        : 1;
+    size_type _M_is_pair_like       : 1;
+    size_type _M_is_std_tuple       : 1;
+    size_type _M_is_tuple_like      : 1;
+
+    size_type _M_is_iterable        : 1;
+    size_type _M_is_insertable      : 1;
+    size_type _M_has_value_type     : 1;
+    size_type _M_has_data           : 1;
+};
+
+
 class KwargsKey
 {
 public:
 
     using value_type = detail::string_hash_type;
+    using ValueType  = value_type;
 
     constexpr KwargsKey() = default;
 
@@ -1313,20 +2897,17 @@ public:
 
 
     /// @brief Multiple KwargsKeys can be joined using the `or` operator.
-    [[nodiscard]]
-    friend constexpr std::array<KwargsKey, 2>
+    [[nodiscard]] friend constexpr std::array<KwargsKey, 2>
         operator||(KwargsKey __first, KwargsKey __second) noexcept
     { return {{__first, __second}}; }
 
     template<std::size_t _StringSize>
-    [[nodiscard]]
-    friend constexpr std::array<KwargsKey, 2>
+    [[nodiscard]] friend constexpr std::array<KwargsKey, 2>
         operator||(KwargsKey __first, const char (&__second)[_StringSize]) noexcept
     { return {{__first, KwargsKey(__second)}}; }
 
     template<std::size_t _Size>
-    [[nodiscard]]
-    friend constexpr std::array<KwargsKey, _Size + 1>
+    [[nodiscard]] friend constexpr std::array<KwargsKey, _Size + 1>
         operator||(const std::array<KwargsKey, _Size>& __first, KwargsKey __second) noexcept
     {
         std::array<KwargsKey, _Size + 1> res;
@@ -1336,8 +2917,7 @@ public:
     }
 
     template<std::size_t _Size, std::size_t _StringSize>
-    [[nodiscard]]
-    friend constexpr std::array<KwargsKey, _Size + 1>
+    [[nodiscard]] friend constexpr std::array<KwargsKey, _Size + 1>
         operator||(const std::array<KwargsKey, _Size>& __first, const char (&__second)[_StringSize]) noexcept
     {
         std::array<KwargsKey, _Size + 1> res;
@@ -1352,104 +2932,254 @@ private:
 };
 
 
-#define _KWARGSVALUE_INCORRECT_CONVERSION_()  assert(false && "KwargsValue: Incorrect conversion.")
-
-
 class KwargsValue
 {
-protected:
+public:
 
-    enum WorkFlags : int
+    enum ValueTag : std::int32_t
     {
-        DoApplyAndCopy = 0,                // type*                      , type**
-        DoFree,                            // type*                      , [unused]
-        DoGetTypeName,                     // [unused]                   , std::string_view*
-        DoGetTypeHash,                     // [unused]                   , std::size_t*
-        DoGetValueTypeHash,                // [unused]                   , std::size_t*
-        DoGetBeginIterator,                // this                       , iterator**
-        DoIterate,                         // std::pair<this, iterator**>, value_type*
-        DoIterateAny,                      // std::pair<this, iterator**>, KwargsValue*
-
-        DoCheckInt  = 0b0001'000,          // [unused], int*
-        DoCheckReal = 0b0010'000,          // [unused], int*
-        DoCheckSign = 0b0100'000,          // [unused], int*
-        DoCheckEnum = 0b1000'000,          // [unused], int*
-
-        DoCheckIterable  = 0b001'0000'000, // [unused], int*
-        DoCheckValueType = 0b010'0000'000, // [unused], int*
-        DoCheckStdArray  = 0b100'0000'000  // [unused], int*
+        PointerFlag = 0,
+        ValueFlag,
+        AppliedFlag
     };
 
-    [[nodiscard]]
-    friend constexpr WorkFlags operator|(WorkFlags __first, WorkFlags __second) noexcept
-    { return static_cast<WorkFlags>(static_cast<std::underlying_type_t<WorkFlags>>(__first) | static_cast<std::underlying_type_t<WorkFlags>>(__second)); }
+    template<typename _Tp>
+    static constexpr ValueTag checkTag() noexcept
+    {
+        if constexpr (
+            std::disjunction_v<
+                detail::is_integral_or_enum<_Tp>,
+                detail::is_pointer<_Tp>,
+                std::is_array<std::remove_reference_t<_Tp>>,
+                std::is_floating_point<std::remove_reference_t<_Tp>>> &&
+            detail::size_of_v<std::decay_t<_Tp>> <= sizeof(void*))
+        {
+            return ValueFlag;
+        }
+        else if constexpr (std::is_lvalue_reference_v<_Tp>)
+        {
+            return PointerFlag;
+        }
+        else
+        {
+            static_assert(std::disjunction_v<std::is_rvalue_reference<_Tp>, std::negation<std::is_reference<_Tp>>>);
+            return AppliedFlag;
+        }
+    }
+
+protected:
 
     template<typename _Tp>
-    static void _S_manage(WorkFlags __work, void* __inData, void* __outData)
+    void _M_place(_Tp&& __value) noexcept
+    {
+        constexpr auto tag = checkTag<_Tp&&>();
+
+        if constexpr (tag == ValueFlag)
+        {
+            _M_data._M_value = 0;
+
+            auto ptr = detail::pointer_cast<std::byte*>(std::addressof(__value));
+
+            for (std::size_t i = 0; i < sizeof(_Tp); ++i, ++ptr)
+            {
+                _M_data._M_bytes[i] = *ptr;
+            }
+        }
+        else if constexpr (tag == AppliedFlag)
+        {
+            _M_data._M_ptr = new (std::nothrow) _Tp(std::move(__value));
+
+        }
+        else if constexpr (tag == PointerFlag)
+        {
+            _M_data._M_ptr = detail::pointer_cast<void*>(std::addressof(__value));
+        }
+    }
+
+protected:
+
+    enum WorkFlags : std::int32_t
+    {
+        DoGetTag,             // [unused]                      , ValueTag*
+        DoApplyAndCopy,       // type*                         , type**
+        DoFree,               // type*                         , [unused]
+        DoCompareEqual,       // std::pair<this, KwargsValue*>*, bool*
+        DoGetType,            // [unused]                      , Type*
+        DoGetUnderlyingType,  // [unused]                      , Type*
+        DoGetBeginIterator,   // this                          , iterator**
+        DoGetBeginValue,      // this                          , value_type*
+        DoGetBeginAnyValue,   // this                          , KwargsValue*
+        DoGetContainerSize,   // this                          , std::size_t*
+        DoGetContainerData,   // this                          , value_type**
+        DoIterate,            // std::pair<this, iterator**>*  , value_type*
+        DoIterateAny,         // std::pair<this, iterator**>*  , KwargsValue*
+        DoEndIteration,       // iterator*                     , [unused]
+        DoGetPairFirst,       // this                          , KwargsValue*
+        DoGetPairSecond       // this                          , KwargsValue*
+    };
+
+    template<typename _Tp>
+    static constexpr void _S_manage(WorkFlags __work, void* __inData, void* __outData)
     {
         using type = detail::enum_underlying_type_t<detail::remove_reference_cv_t<_Tp>>;
 
+        static_assert(std::negation_v<std::is_void<type>>);
+
         switch (__work)
         {
+            case DoGetTag:
+            {
+               *detail::pointer_cast<ValueTag*>(__outData) = checkTag<_Tp>();
+                break;
+            }
+
             case DoApplyAndCopy:
             {
-                type*  iptr = reinterpret_cast<type*>(__inData);
-                type** optr = reinterpret_cast<type**>(__outData);
+                if constexpr (std::negation_v<std::is_array<type>>)
+                {
+                    type*  iptr = detail::pointer_cast<type*>(__inData);
+                    type** optr = detail::pointer_cast<type**>(__outData);
 
-                *optr = new type(*iptr);
+                    *optr = new type(*iptr);
+                }
+
                 break;
             }
 
             case DoFree:
             {
-                delete reinterpret_cast<type*>(__inData);
+                if constexpr (std::negation_v<std::is_array<type>>)
+                {
+                    delete detail::pointer_cast<type*>(__inData);
+                }
+
                 break;
             }
 
-            case DoGetTypeName:
+            case DoCompareEqual:
             {
-                *reinterpret_cast<std::string_view*>(__outData) = detail::type_name<_Tp>();
+                auto optr = detail::pointer_cast<bool*>(__outData);
+
+                if constexpr (detail::is_equality_comparable_v<type>)
+                {
+                    auto iptr = detail::pointer_cast<std::pair<KwargsValue*, KwargsValue*>*>(__inData);
+
+                    *optr = (iptr->first->value<type>() == iptr->second->value<type>());
+                }
+                else
+                {
+                    *optr = false;
+                }
+
                 break;
             }
 
-            case DoGetTypeHash:
+            case DoGetType:
             {
-                *reinterpret_cast<std::size_t*>(__outData) = typeid(type).hash_code();
+                *detail::pointer_cast<Type*>(__outData) = Type().construct<_Tp>();
                 break;
             }
 
-            case DoGetValueTypeHash:
+            case DoGetUnderlyingType:
             {
-                *reinterpret_cast<std::size_t*>(__outData) = typeid(detail::container_value_type_t<type>).hash_code();
+                *detail::pointer_cast<Type*>(__outData) = Type().construct<type>();
                 break;
             }
 
             case DoGetBeginIterator:
             {
-                KwargsValue* iptr = reinterpret_cast<KwargsValue*>(__inData);
-                detail::container_iterator_t<type>** optr = reinterpret_cast<detail::container_iterator_t<type>**>(__outData);
+                auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                auto optr = detail::pointer_cast<detail::container_iterator_t<type>**>(__outData);
 
-                *optr = new detail::container_iterator_t<type>(detail::container_begin_iterator<type>(iptr->_M_data._M_ptr));
+                *optr = new detail::container_iterator_t<type>(detail::container_begin_iterator(iptr->reference<type>()));
+                break;
+            }
+
+            case DoGetBeginValue:
+            {
+                using value_type = std::conditional_t<
+                    std::is_default_constructible_v<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<type>>>,
+                    detail::remove_reference_cv_t<detail::dereferenced_iterator_t<type>>,
+                    detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<type>>>
+                >;
+
+                auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                auto optr = detail::pointer_cast<std::add_pointer_t<detail::remove_const_key_t<value_type>>>(__outData);
+
+                *optr = *detail::container_begin_iterator(iptr->reference<type>());
+                break;
+            }
+
+            case DoGetBeginAnyValue:
+            {
+                auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                auto optr = detail::pointer_cast<KwargsValue*>(__outData);
+
+                *optr = *detail::container_begin_iterator(iptr->reference<type>());
+                break;
+            }
+
+            case DoGetContainerSize:
+            {
+                auto optr = detail::pointer_cast<std::size_t*>(__outData);
+
+                if constexpr (detail::has_container_size_v<type>)
+                {
+                    auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                    *optr = static_cast<std::remove_reference_t<decltype(*optr)>>(iptr->pointer<type>()->size());
+                }
+                else if constexpr (detail::is_bounded_array_v<type>)
+                {
+                    *optr = std::extent_v<type>;
+                }
+                else if constexpr (detail::is_tuple_like_v<type>)
+                {
+                    *optr = std::tuple_size_v<type>;
+                }
+                else
+                {
+                    *optr = 1;
+                }
+
+                break;
+            }
+
+            case DoGetContainerData:
+            {
+                if constexpr (detail::has_container_data_v<type>)
+                {
+                    if constexpr (detail::is_dereferenceable_v<decltype(std::declval<type&>().data())>)
+                    {
+                        auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                        auto optr = detail::pointer_cast<decltype(std::declval<type&>().data())*>(__outData);
+
+                        *optr = iptr->pointer<type>()->data();
+                    }
+                }
+
                 break;
             }
 
             case DoIterate:
             {
-                if constexpr (detail::has_container_value_type_v<type>)
-                {
-                    auto iptr = reinterpret_cast<std::pair<KwargsValue*, detail::container_iterator_t<type>**>*>(__inData);
-                    auto optr = reinterpret_cast<detail::container_value_type_t<type>*>(__outData);
+                using value_type = std::conditional_t<
+                    std::is_default_constructible_v<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<type>>>,
+                    detail::remove_reference_cv_t<detail::dereferenced_iterator_t<type>>,
+                    detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<type>>>
+                >;
 
-                    if (**iptr->second == detail::container_end_iterator<type>(iptr->first->_M_data._M_ptr))
-                    {
-                        delete *iptr->second;
-                        *iptr->second = nullptr;
-                    }
-                    else
-                    {
-                        *optr = static_cast<detail::container_value_type_t<type>>(***iptr->second);
-                        ++**iptr->second;
-                    }
+                auto iptr = detail::pointer_cast<std::add_pointer_t<std::pair<KwargsValue*, detail::container_iterator_t<type>**>>>(__inData);
+                auto optr = detail::pointer_cast<std::add_pointer_t<detail::remove_const_key_t<value_type>>>(__outData);
+
+                if (**iptr->second == detail::container_end_iterator(iptr->first->template reference<type>()))
+                {
+                    delete *iptr->second;
+                    *iptr->second = nullptr;
+                }
+                else
+                {
+                    *optr = static_cast<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<type>>>(***iptr->second);
+                    ++**iptr->second;
                 }
 
                 break;
@@ -1457,10 +3187,10 @@ protected:
 
             case DoIterateAny:
             {
-                auto iptr = reinterpret_cast<std::pair<KwargsValue*, detail::container_iterator_t<type>**>*>(__inData);
-                auto optr = reinterpret_cast<KwargsValue*>(__outData);
+                auto iptr = detail::pointer_cast<std::pair<KwargsValue*, detail::container_iterator_t<type>**>*>(__inData);
+                auto optr = detail::pointer_cast<KwargsValue*>(__outData);
 
-                if (**iptr->second == detail::container_end_iterator<type>(iptr->first->_M_data._M_ptr))
+                if (**iptr->second == detail::container_end_iterator(iptr->first->template reference<type>()))
                 {
                     delete *iptr->second;
                     *iptr->second = nullptr;
@@ -1474,47 +3204,65 @@ protected:
                 break;
             }
 
-            default:
+            case DoEndIteration:
             {
-                int result = 0;
+                auto iptr = detail::pointer_cast<detail::container_iterator_t<type>*>(__inData);
+                delete iptr;
 
-                if ((__work & DoCheckInt) && detail::is_integral_v<type>)
+                break;
+            }
+
+            case DoGetPairFirst:
+            {
+                if constexpr (detail::is_pair_like_v<type>)
                 {
-                    result |= DoCheckInt;
+                    auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                    auto optr = detail::pointer_cast<KwargsValue*>(__outData);
+
+                    auto& [first, second] = iptr->reference<type>();
+
+                    *optr = first;
                 }
-
-                if ((__work & DoCheckReal) && std::is_floating_point_v<type>)
+                else if constexpr (detail::is_tuple_like_v<type>)
                 {
-                    result |= DoCheckReal;
+                    if constexpr (std::tuple_size_v<type> == 2)
+                    {
+                        auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                        auto optr = detail::pointer_cast<KwargsValue*>(__outData);
+
+                        auto& [first, second] = iptr->reference<type>();
+
+                        *optr = first;
+                    }
                 }
                 
-                if ((__work & DoCheckSign) && std::is_signed_v<type>)
-                {
-                    result |= DoCheckSign;
-                }
+                break;
+            }
 
-                if ((__work & DoCheckEnum) && std::is_enum_v<detail::remove_reference_cv_t<_Tp>>)
+            case DoGetPairSecond:
+            {
+                if constexpr (detail::is_pair_like_v<type>)
                 {
-                    result |= DoCheckEnum;
-                }
+                    auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                    auto optr = detail::pointer_cast<KwargsValue*>(__outData);
 
+                    auto& [first, second] = iptr->reference<type>();
+
+                    *optr = second;
+                }
+                else if constexpr (detail::is_tuple_like_v<type>)
+                {
+                    if constexpr (std::tuple_size_v<type> == 2)
+                    {
+                        auto iptr = detail::pointer_cast<KwargsValue*>(__inData);
+                        auto optr = detail::pointer_cast<KwargsValue*>(__outData);
+
+                        auto& [first, second] = iptr->reference<type>();
+
+                        *optr = second;
+                    }
+                }
                 
-                if ((__work & DoCheckIterable) && detail::is_iterable_container_v<type>)
-                {
-                    result |= DoCheckIterable;
-                }
-                
-                if ((__work & DoCheckValueType) && detail::has_container_value_type_v<type>)
-                {
-                    result |= DoCheckValueType;
-                }
-
-                if ((__work & DoCheckStdArray) && detail::is_std_array_v<type>)
-                {
-                    result |= DoCheckStdArray;
-                }
-
-                *reinterpret_cast<int*>(__outData) = result;
                 break;
             }
         }
@@ -1522,220 +3270,142 @@ protected:
 
 public:
 
-    constexpr KwargsValue() = default;
+    constexpr KwargsValue() noexcept = default;
 
     constexpr KwargsValue(const KwargsValue& __other) noexcept
     {
-        if (__other._M_valueTag == AppliedFlag)
+        if (__other.valueTag() == AppliedFlag)
             __other._M_manager(DoApplyAndCopy, __other._M_data._M_ptr, &_M_data._M_ptr);
         else
             _M_data._M_value = __other._M_data._M_value;
 
         _M_manager = __other._M_manager;
-        _M_valueTag = __other._M_valueTag;
-        _M_size = __other._M_size;
     }
 
     constexpr KwargsValue(KwargsValue&& __other) noexcept
-        : _M_manager(__other._M_manager)
-        , _M_valueTag(detail::exchange(__other._M_valueTag, __other._M_valueTag == AppliedFlag ? PointerFlag : __other._M_valueTag))
-        , _M_size(__other._M_size)
+        : _M_manager(detail::exchange(__other._M_manager, &KwargsValue::_S_manage<int>))
     {
        _M_data._M_value = __other._M_data._M_value;
     }
 
     template<typename _Tp>
-    constexpr KwargsValue(const _Tp& __value) noexcept
-        : _M_manager(&KwargsValue::_S_manage<_Tp>)
-    {
-        using type = std::remove_reference_t<_Tp>;
-
-        if constexpr (detail::use_value_flag_v<type>)
-        {
-            _M_data._M_value = 0;
-
-            for (std::size_t i = 0; i < sizeof(type); ++i)
-            {
-                _M_data._M_bytes[i] = reinterpret_cast<const std::byte*>(&__value)[i];
-            }
-
-            _M_valueTag = ValueFlag;
-        }
-        else
-        {
-            _M_data._M_ptr = const_cast<detail::remove_reference_cv_t<decltype(__value)>*>(std::addressof(__value));
-
-            _M_valueTag = PointerFlag;
-        }
-
-        _M_size = sizeof(_Tp);
-    }
-    
-    template<typename _Tp>
     constexpr KwargsValue(_Tp&& __value) noexcept
-        : _M_manager(&KwargsValue::_S_manage<_Tp>)
+        : _M_manager(&KwargsValue::_S_manage<_Tp&&>)
     {
-        using type = std::remove_reference_t<_Tp>;
-
-        if constexpr (detail::use_value_flag_v<type>)
+        if constexpr (std::is_array_v<std::remove_reference_t<_Tp>>)
         {
-            _M_data._M_value = 0;
-
-            for (std::size_t i = 0; i < sizeof(type); ++i)
-            {
-                _M_data._M_bytes[i] = reinterpret_cast<std::byte*>(&__value)[i];
-            }
-
-            _M_valueTag = ValueFlag;
+            static_assert(checkTag<decltype(__value)>() == ValueFlag);
+            _M_data._M_ptr = detail::pointer_cast<std::decay_t<_Tp>>(__value);
         }
         else
         {
-            if constexpr (std::is_rvalue_reference_v<decltype(__value)>)
-            {
-                _M_data._M_ptr = new (std::nothrow) type(std::move(__value));
-                _M_valueTag = AppliedFlag;
-            }
-            else if constexpr (std::is_lvalue_reference_v<decltype(__value)>)
-            {
-                _M_data._M_ptr = const_cast<std::add_pointer_t<detail::remove_reference_cv_t<decltype(__value)>>>(std::addressof(__value));
-
-                _M_valueTag = PointerFlag;
-            }
-            else
-            {
-                static_assert(std::is_reference_v<decltype(__value)>);
-            }
+            _M_place(std::forward<_Tp>(__value));
         }
-
-        _M_size = sizeof(type);
     }
     
-    template<std::size_t _Size>
-    constexpr KwargsValue(const char (&__value)[_Size]) noexcept
-        : _M_manager(&KwargsValue::_S_manage<const char*>)
-        , _M_valueTag(StringLiteralFlag)
-        , _M_size(_Size)
+    template<typename _Tp, std::size_t _Size>
+    constexpr KwargsValue(const _Tp (&__value)[_Size]) noexcept
+        : _M_manager(&KwargsValue::_S_manage<const _Tp (&)[_Size]>)
     {
-        const char* ptr = __value;
-        _M_data._M_ptr = const_cast<char*>(ptr);
+        static_assert(checkTag<decltype(__value)>() == ValueFlag);
+        _M_data._M_ptr = detail::pointer_cast<_Tp*>(__value);
     }
-    
+
     _KWARGS_DESTRUCTOR_CONSTEXPR ~KwargsValue() noexcept
     {
-        if (_M_valueTag == AppliedFlag)
+        if (valueTag() == AppliedFlag)
         {
             _M_manager(DoFree, _M_data._M_ptr, nullptr);
         }
     }
 
-
-    [[nodiscard]]
-    constexpr std::string_view typeName() const noexcept
+    [[nodiscard]] constexpr ValueTag valueTag() const noexcept
     {
-        std::string_view _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoGetTypeName, nullptr, &result);
+        ValueTag _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetTag, nullptr, &result);
 
         return result;
     }
 
-    [[nodiscard]]
-    constexpr std::size_t typeHashCode() const noexcept
+    [[nodiscard]] constexpr Type type() const noexcept
     {
-        std::size_t _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(hashCode);
-        _M_manager(DoGetTypeHash, nullptr, &hashCode);
+        Type _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetType, nullptr, &result);
 
-        return hashCode;
+        return result;
     }
 
-    /**
-     * @return e.g. If my type is std::vector<int>, then return the hash code for int.
-     */
-    [[nodiscard]]
-    constexpr std::size_t valueTypeHashCode() const noexcept
+    [[nodiscard]] constexpr Type underlyingType() const noexcept
     {
-        std::size_t _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(hashCode);
-        _M_manager(DoGetValueTypeHash, nullptr, &hashCode);
+        Type _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetUnderlyingType, nullptr, &result);
 
-        return hashCode;
-    }
-
-    [[nodiscard]]
-    constexpr bool hasValueType() const noexcept
-    {
-        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoCheckValueType, nullptr, &result);
-
-        return static_cast<bool>(result);
+        return result;
     }
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr bool isSameType() const noexcept
-    { return typeid(detail::enum_underlying_type_t<detail::remove_reference_cv_t<_Tp>>).hash_code() == typeHashCode(); }
-
-    [[nodiscard]]
-    constexpr bool isInteger() const noexcept
+    [[nodiscard]] constexpr auto data() const noexcept -> std::remove_reference_t<_Tp>
     {
-        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoCheckInt, nullptr, &result);
+        std::remove_reference_t<_Tp> _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetContainerData, detail::as_non_cv(this), &result);
 
-        return static_cast<bool>(result);
+        return result;
     }
 
-    [[nodiscard]]
-    constexpr bool isRealNumber() const noexcept
+    [[nodiscard]] constexpr std::size_t elementCount() const noexcept
     {
-        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoCheckReal, nullptr, &result);
+        std::size_t _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetContainerSize, detail::as_non_cv(this), &result);
 
-        return static_cast<bool>(result);
+        return result;
     }
 
-    [[nodiscard]]
-    constexpr bool isEnum() const noexcept
+    [[nodiscard]] constexpr std::size_t size() const noexcept
+    { return elementCount(); }
+
+    template<typename _Tp>
+    [[nodiscard]] _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR _Tp first() const noexcept
     {
-        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoCheckEnum, nullptr, &result);
+        KwargsValue _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetPairFirst, detail::as_non_cv(this), &result);
 
-        return static_cast<bool>(result);
-    }
-
-    [[nodiscard]]
-    constexpr bool isStdArray() const noexcept
-    {
-        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoCheckStdArray, nullptr, &result);
-
-        return static_cast<bool>(result);
-    }
-
-    [[nodiscard]]
-    constexpr bool isIterable() const noexcept
-    {
-        int _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
-        _M_manager(DoCheckIterable, nullptr, &result);
-
-        return static_cast<bool>(result);
+        return result.value<_Tp>();
     }
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr _Tp* pointer() noexcept
+    [[nodiscard]] _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR _Tp second() const noexcept
     {
-        switch (_M_valueTag)
+        KwargsValue _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+        _M_manager(DoGetPairSecond, detail::as_non_cv(this), &result);
+
+        return result.value<_Tp>();
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] constexpr auto pointer() noexcept
+        -> std::add_pointer_t<std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::add_pointer_t<std::remove_reference_t<_Tp>>;
+
+        switch (valueTag())
         {
             case PointerFlag:
             case AppliedFlag:
                 
-                return reinterpret_cast<_Tp*>(_M_data._M_ptr);
+                return detail::pointer_cast<result_type>(_M_data._M_ptr);
 
-            case StringLiteralFlag:
-
-                return reinterpret_cast<const _Tp*>(_M_data._M_bytes);
 
             case ValueFlag:
 
-                return reinterpret_cast<_Tp*>(&_M_data._M_value);
+                // Taking the address of an array causes it to decay to a pointer to its first element.
+                if constexpr (std::is_array_v<std::remove_reference_t<_Tp>>)
+                {
+                    return detail::pointer_cast<result_type>(_M_data._M_ptr);
+                }
+                else
+                {
+                    return detail::pointer_cast<result_type>(&_M_data._M_value);
+                }
 
             _KWARGS_ATTRIBUTE_UNLIKELY
             default:
@@ -1746,23 +3416,29 @@ public:
     }
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr const _Tp* pointer() const noexcept
+    [[nodiscard]] constexpr auto pointer() const noexcept
+        -> std::add_pointer_t<std::add_const_t<std::remove_reference_t<_Tp>>>
     {
-        switch (_M_valueTag)
+        using result_type = std::add_pointer_t<std::remove_reference_t<_Tp>>;
+
+        switch (valueTag())
         {
             case PointerFlag:
             case AppliedFlag:
                 
-                return reinterpret_cast<const _Tp*>(_M_data._M_ptr);
-
-            case StringLiteralFlag:
-
-                return reinterpret_cast<const _Tp*>(_M_data._M_bytes);
+                return detail::pointer_cast<result_type>(_M_data._M_ptr);
 
             case ValueFlag:
 
-                return reinterpret_cast<const _Tp*>(&_M_data._M_value);
+                // Taking the address of an array causes it to decay to a pointer to its first element.
+                if constexpr (std::is_array_v<std::remove_reference_t<_Tp>>)
+                {
+                    return detail::pointer_cast<result_type>(_M_data._M_ptr);
+                }
+                else
+                {
+                    return detail::pointer_cast<result_type>(&_M_data._M_value);
+                }
 
             _KWARGS_ATTRIBUTE_UNLIKELY
             default:
@@ -1774,567 +3450,717 @@ public:
 
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr _Tp& reference() noexcept
+    [[nodiscard]] constexpr _Tp& reference() noexcept
     { return *pointer<_Tp>(); }
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr const _Tp& reference() const noexcept
+    [[nodiscard]] constexpr const _Tp& reference() const noexcept
     { return *pointer<_Tp>(); }
 
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr operator _Tp() const noexcept
-    { return value<_Tp>(); }
-
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept -> std::enable_if_t<std::is_same_v<std::remove_cv_t<_Tp>, const char*>, _Tp>
+    [[nodiscard]] constexpr operator _Tp() const noexcept
     {
-        if (_M_valueTag == StringLiteralFlag)
+        static_assert(std::negation_v<std::disjunction<std::is_reference<_Tp>, std::is_array<_Tp>>>);
+        return value<_Tp>();
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<std::is_same_v<detail::remove_reference_cv_t<_Tp>, char>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if (ty.isSameAs<bool>())
         {
-            return reference<const char*>();
+            return static_cast<result_type>(static_cast<bool>(_M_data._M_bytes[0]) ? 't' : 'f');
         }
+        else if (ty.isCharacter())
+        {
+            return static_cast<result_type>(_M_data._M_bytes[0]);
+        }
+        else if (ty.isCharacterPointer())
+        {
+            return reference<result_type*>()[0];
+        }
+        else if (ty.isIterable())
+        {
+            return _M_beginValue<result_type>(ty);
+        }
+        else
+        {
+            return static_cast<result_type>(value<int>(std::forward<_Args>(__args)...));
+        }
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<detail::is_char_pointer_v<_Tp>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if (ty.isSameAs<bool>())
+        {
+            return detail::pointer_cast<result_type>(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
+        }
+        else if (ty.isCharacter())
+        {
+            return detail::pointer_cast<result_type>(&_M_data._M_bytes[0]);
+        }
+        else if (ty.isCharacterPointer())
+        {
+            return detail::pointer_cast<result_type>(reference<const char*>());
+        }
+        else if (ty.isStdString())
+        {
+            return detail::pointer_cast<result_type>(pointer<std::string>()->c_str());
+        }
+        else if (ty.isStdStringView())
+        {
+            return detail::pointer_cast<result_type>(pointer<std::string_view>()->data());
+        }
+        else if (Type&& vty = ty.valueType(); ty.isStdVector() && vty.isCharacter())
+        {
+            return detail::pointer_cast<result_type>(pointer<std::vector<char>>()->data());
+        }
+        else if (ty.isStdArray() && vty.isCharacter())
+        {
+            return detail::pointer_cast<result_type>(pointer<std::array<char, 1>>()->data());
+        }
+
+        if constexpr (sizeof...(_Args) == 0)
+        {
+            return detail::pointer_cast<result_type>("");
+        }
+        else
+        {
+            return result_type(std::forward<_Args>(__args)...);
+        }
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&...) const noexcept
+        -> std::enable_if_t<detail::is_std_string_v<_Tp>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if (ty.isSameAs<bool>())
+        {
+            return result_type(
+                detail::pointer_cast<
+                    const detail::container_value_type_t<result_type>*>(
+                        static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false"));
+        }
+        else if (ty.isCharacter())
+        {
+            return result_type(1, static_cast<detail::container_value_type_t<result_type>>(_M_data._M_bytes[0]));
+        }
+        else if (ty.isCharacterPointer())
+        {
+            if (ty.isArray())
+            {
+                return result_type(reference<const detail::container_value_type_t<result_type>*>(), ty.size() / sizeof(char) - 1);
+            }
+            else
+            {
+                return result_type(reference<const detail::container_value_type_t<result_type>*>());
+            }
+        }
+        else if (ty.isStdString())
+        {
+            return reference<result_type>();
+        }
+        else if (ty.isStdStringView())
+        {
+            const auto* ptr = pointer<std::basic_string_view<detail::container_value_type_t<result_type>>>();
+            return result_type(ptr->data(), ptr->size());
+        }
+        else if (ty.isIntegralOrEnum())
+        {
+            if (ty.isSigned())
+            {
+                if (ty.size() == sizeof(std::int8_t))
+                {
+                    return detail::integer_to_string<result_type>(reference<std::int8_t >());
+                }
+                else if (ty.size() == sizeof(std::int16_t))
+                {
+                    return detail::integer_to_string<result_type>(reference<std::int16_t>());
+                }
+                else if (ty.size() == sizeof(std::int32_t))
+                {
+                    return detail::integer_to_string<result_type>(reference<std::int32_t>());
+                }
+                else // if (ty.size() == sizeof(std::int64_t))
+                {
+                    return detail::integer_to_string<result_type>(reference<std::int64_t>());
+                }
+            }
+            else
+            {
+                return detail::integer_to_string<result_type>(reference<std::uint64_t>());
+            }
+        }
+        else if (ty.isFloatingPoint())
+        {
+            if (ty.size() == sizeof(float))
+            {
+                return detail::floating_point_to_string<result_type>(reference<float>());
+            }
+            else if (ty.size() == sizeof(double))
+            {
+                return detail::floating_point_to_string<result_type>(reference<double>());
+            }
+            else // if (ty.size() == sizeof(long double))
+            {
+                return detail::floating_point_to_string<result_type>(reference<long double>());
+            }
+        }
+        else if (ty.isPointer())
+        {
+            return detail::pointer_to_string<result_type>(reference<void*>());
+        }
+        else
+        {
+            return _M_getInsertableContainer<result_type>(ty);
+        }
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<detail::is_std_string_view_v<_Tp>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if (ty.isSameAs<bool>())
+        {
+            return result_type(
+                detail::pointer_cast<
+                    const detail::container_value_type_t<result_type>*>(
+                        static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false"));
+        }
+        else if (ty.isCharacter())
+        {
+            return result_type(detail::pointer_cast<detail::container_value_type_t<result_type>*>(&_M_data._M_bytes[0]), 1);
+        }
+        else if (ty.isCharacterPointer())
+        {
+            if (ty.isArray())
+            {
+                return result_type(reference<const detail::container_value_type_t<result_type>*>(), ty.size() / sizeof(char) - 1);
+            }
+            else
+            {
+                return result_type(reference<const detail::container_value_type_t<result_type>*>());
+            }
+        }
+        else if (ty.isStdString())
+        {
+            const auto* ptr = pointer<std::basic_string<detail::container_value_type_t<result_type>>>();
+            return result_type(ptr->data(), ptr->size());
+        }
+        else if (ty.isStdStringView())
+        {
+            return reference<result_type>();
+        }
+        else if (Type&& vty = ty.valueType(); ty.isStdVector() && vty.isCharacter())
+        {
+            const auto* ptr = pointer<std::vector<detail::container_value_type_t<result_type>>>();
+            return result_type(ptr->data(), ptr->size());
+        }
+        else if (ty.isStdArray() && vty.isCharacter())
+        {
+            const auto* ptr = pointer<std::array<detail::container_value_type_t<result_type>, 1>>();
+            return result_type(ptr->data(), ty.size() / vty.size());
+        }
+
+        return result_type(std::forward<_Args>(__args)...);
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<detail::is_integral_or_enum_v<_Tp> && std::negation_v<std::is_same<detail::remove_reference_cv_t<_Tp>, char>>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if (ty.isIntegralOrEnum())
+        {
+            if (ty.isSigned())
+            {
+                if (ty.size() == sizeof(std::int8_t))
+                {
+                    return static_cast<result_type>(reference<std::int8_t>());
+                }
+                else if (ty.size() == sizeof(std::int16_t)) _KWARGS_ATTRIBUTE_UNLIKELY
+                {
+                    return static_cast<result_type>(reference<std::int16_t>());
+                }
+                else if (ty.size() == sizeof(std::int32_t)) _KWARGS_ATTRIBUTE_LIKELY
+                {
+                    return static_cast<result_type>(reference<std::int32_t>());
+                }
+                else // if (ty.size() == sizeof(std::int64_t))
+                {
+                    return static_cast<result_type>(reference<std::int64_t>());
+                }
+            }
+            else
+            {
+                return static_cast<result_type>(reference<std::uint64_t>());
+            }
+        }
+        else if (ty.isFloatingPoint())
+        {
+            if (ty.size() == sizeof(float))
+            {
+                return static_cast<result_type>(reference<float>());
+            }
+            else if (ty.size() == sizeof(double))
+            {
+                return static_cast<result_type>(reference<double>());
+            }
+            else // if (ty.size() == sizeof(long double))
+            {
+                return static_cast<result_type>(reference<long double>());
+            }
+        }
+        else if (ty.isCharacterPointer())
+        {
+            if (auto ptr = reference<const char*>(); ptr == nullptr)
+            {
+                return static_cast<result_type>(0);
+            }
+            else if (ty.isArray())
+            {
+                return detail::string_to_integer<result_type>(std::string_view(ptr, ty.size() / sizeof(char) - 1));
+            }
+            else
+            {
+                return detail::string_to_integer<result_type>(ptr);
+            }
+        }
+        else if (ty.isPointer() || ty.isArray())
+        {
+            return static_cast<result_type>(reinterpret_cast<std::uintptr_t>(reference<void*>()));
+        }
+        else if (ty.isStdString())
+        {
+            return detail::string_to_integer<result_type>(reference<std::string>());
+        }
+        else if (ty.isStdStringView())
+        {
+            return detail::string_to_integer<result_type>(reference<std::string_view>());
+        }
+        else if (ty.valueType().isCharacter())
+        {
+            if (ty.isStdArray())
+            {
+                std::string_view sv(reference<std::array<char, 1>>().data(), ty.size() / sizeof(char));
+
+                return detail::string_to_integer<result_type>(sv);
+            }
+            else if (ty.isStdVector())
+            {
+                std::string_view sv(reference<std::vector<char>>().data(), elementCount());
+
+                return detail::string_to_integer<result_type>(sv);
+            }
+        }
+
+        return result_type(std::forward<_Args>(__args)...);
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<std::is_floating_point_v<_Tp>, _Tp>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if (ty.isIntegralOrEnum())
+        {
+            if (ty.isSigned())
+            {
+                if (ty.size() == sizeof(std::int8_t))
+                {
+                    return static_cast<result_type>(reference<std::int8_t>());
+                }
+                else if (ty.size() == sizeof(std::int16_t)) _KWARGS_ATTRIBUTE_UNLIKELY
+                {
+                    return static_cast<result_type>(reference<std::int16_t>());
+                }
+                else if (ty.size() == sizeof(std::int32_t)) _KWARGS_ATTRIBUTE_LIKELY
+                {
+                    return static_cast<result_type>(reference<std::int32_t>());
+                }
+                else // if (ty.size() == sizeof(std::int64_t))
+                {
+                    return static_cast<result_type>(reference<std::int64_t>());
+                }
+            }
+            else
+            {
+                return static_cast<result_type>(reference<std::uint64_t>());
+            }
+        }
+        else if (ty.isFloatingPoint())
+        {
+            if (ty.size() == sizeof(float))
+            {
+                return static_cast<result_type>(reference<float>());
+            }
+            else if (ty.size() == sizeof(double))
+            {
+                return static_cast<result_type>(reference<double>());
+            }
+            else // if (ty.size() == sizeof(long double))
+            {
+                return static_cast<result_type>(reference<long double>());
+            }
+        }
+        else if (ty.isCharacterPointer())
+        {
+            if (auto ptr = reference<const char*>(); ptr == nullptr)
+            {
+                return static_cast<result_type>(0);
+            }
+            else if (ty.isArray())
+            {
+                return static_cast<result_type>(detail::string_to_floating_point<result_type>(std::string_view(ptr, ty.size() / sizeof(char) - 1)));
+            }
+            else
+            {
+                return static_cast<result_type>(detail::string_to_floating_point<result_type>(ptr));
+            }
+        }
+        else if (ty.isStdString())
+        {
+            return static_cast<result_type>(detail::string_to_floating_point<long double>(reference<std::string>()));
+        }
+        else if (ty.isStdStringView())
+        {
+            return static_cast<result_type>(detail::string_to_floating_point<long double>(reference<std::string_view>()));
+        }
+        else if (ty.isStdArray())
+        {
+            return static_cast<result_type>(detail::string_to_floating_point<result_type>(std::string_view(reference<std::array<char, 1>>().data(), elementCount())));
+        }
+        else if (ty.isStdVector())
+        {
+            return static_cast<result_type>(detail::string_to_floating_point<result_type>(std::string_view(reference<std::vector<char>>().data(), elementCount())));
+        }
+
+        return result_type(std::forward<_Args>(__args)...);
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<detail::is_pointer_v<std::remove_reference_t<_Tp>> && std::negation_v<detail::is_char_pointer<_Tp>>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
+
+        if constexpr (std::is_null_pointer_v<result_type>)
+        {
+            return static_cast<result_type>(nullptr);
+        }
+        else if (ty.isPointer())
+        {
+            return reference<result_type>();
+        }
+        else if constexpr (std::negation_v<std::is_null_pointer<result_type>>)
+        {
+            if (ty.hasData())
+            {
+                return data<detail::container_value_type_t<result_type>*>();
+            }
+            else
+            {
+                return result_type(std::forward<_Args>(__args)...);
+            }
+        }
+        else
+        {
+            return result_type(std::forward<_Args>(__args)...);
+        }
+    }
+
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<std::conjunction_v<detail::is_tuple_like<_Tp>, std::negation<detail::is_std_array<_Tp>>>, std::remove_reference_t<_Tp>>
+    {
+        using result_type = std::remove_reference_t<_Tp>;
+
+        Type&& ty = type();
         
-        std::size_t hashCode = typeHashCode();
-
-        /// std::string -> const char*
-        if (typeid(std::string).hash_code() == hashCode)
+        if (ty.isSameAs<result_type>())
         {
-            return pointer<std::string>()->c_str();
-        } else
-
-        /// std::string_view -> const char*
-        if (typeid(std::string_view).hash_code() == hashCode)
-        {
-            return pointer<std::string_view>()->data();
-        } else
-
-        /// bool -> const char*
-        if (typeid(bool).hash_code() == hashCode)
-        {
-            return static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false";
-        } else
-
-        /// char or uchar -> const char*
-        if (typeid(char).hash_code() == hashCode ||
-            typeid(signed char).hash_code() == hashCode ||
-            typeid(unsigned char).hash_code() == hashCode)
-        {
-            return reinterpret_cast<const char*>(&_M_data._M_bytes[0]);
-        } else
-
-        /// std::vector<char> -> const char*
-        if (typeid(std::vector<char>).hash_code() == hashCode)
-        {
-            return pointer<std::vector<char>>()->data();
-        } else
-
-        /// std::array<char, ...> -> const char*
-        if (hashCode = valueTypeHashCode();
-            isStdArray() &&
-                (typeid(char).hash_code() == hashCode ||
-                    typeid(signed char).hash_code() == hashCode ||
-                    typeid(unsigned char).hash_code() == hashCode))
-        {
-            return pointer<std::array<char, 1>>()->data();
+            return reference<result_type>();
         }
-
-        _KWARGSVALUE_INCORRECT_CONVERSION_();
-
-        constexpr const char* nullstr = "";
-        return nullstr;
+        else if constexpr (std::tuple_size_v<result_type> == 2)
+        {
+            return result_type(first<detail::first_of_tuple_t<result_type>>(), second<detail::second_of_tuple_t<result_type>>());
+        }
+        else
+        {
+            return result_type(std::forward<_Args>(__args)...);
+        }
     }
 
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept -> std::enable_if_t<std::is_same_v<std::remove_cv_t<_Tp>, std::string>, _Tp>
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<detail::is_unbounded_array_v<_Tp>, std::decay_t<_Tp>>
     {
-        std::size_t hashCode = typeHashCode();
+        using result_type = std::decay_t<_Tp>;
 
-        if (typeid(std::string).hash_code() == hashCode)
+        Type&& ty = type();
+
+        if (ty.isSameAs<std::remove_cv_t<std::decay_t<_Tp>>>() || (ty.isArray() && ty.valueType().isSameAs<std::remove_cv_t<std::remove_extent_t<_Tp>>>()))
         {
-            return reference<_Tp>();
-        } else
-
-        /// const char* -> std::string
-        if (_M_valueTag == StringLiteralFlag)
-        {
-            return std::string(reference<const char*>(), _M_size);
-        } else
-
-        /// std::string_view -> std::string
-        if (isSameType<std::string_view>())
-        {
-            const std::string_view* ptr = pointer<std::string_view>();
-            return std::string(ptr->data(), ptr->size());
-        } else
-
-        /// Integer or floating point -> std::string
-        if (int is; _M_manager(DoCheckInt | DoCheckReal | DoCheckSign | DoCheckEnum, nullptr, &is), is)
-        {
-            if (is & DoCheckInt)
-            {
-                if (_M_size == sizeof(char) && !(is & DoCheckEnum))
-                {
-                    if (typeid(char).hash_code() == hashCode ||
-                        typeid(signed char).hash_code() == hashCode ||
-                        typeid(unsigned char).hash_code() == hashCode)
-                    {
-                        return std::string(1, static_cast<char>(_M_data._M_bytes[0]));
-                    }
-                    else // if (typeid(bool).hash_code() == hashCode)
-                    {
-                        return std::string(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
-                    }
-                }
-
-                if (is & DoCheckSign)
-                {
-                    if (_M_size == sizeof(std::int8_t))
-                        return std::to_string(reference<std::int8_t>());
-                    else if (_M_size == sizeof(std::int16_t))
-                        return std::to_string(reference<std::int16_t>());
-                    else if (_M_size == sizeof(std::int32_t))
-                        return std::to_string(reference<std::int32_t>());
-                    else // if (_M_size == sizeof(std::int64_t))
-                        return std::to_string(reference<std::int64_t>());
-                 // else if (_M_size == sizeof(std::int128_t))
-                 //     return std::to_string(reference<std::int128_t>());
-                }
-                else
-                {
-                    return std::to_string(reference<std::uint64_t>());
-                }
-            }
-            else
-            {
-                if (_M_size == sizeof(float))
-                    return std::to_string(reference<float>());
-                else if (_M_size == sizeof(double))
-                    return std::to_string(reference<double>());
-                else if (_M_size == sizeof(long double))
-                    return std::to_string(reference<long double>());
-            }
+            return reference<result_type>();
         }
-
-        _KWARGSVALUE_INCORRECT_CONVERSION_();
-        return std::string();
+        else
+        {
+            return result_type(std::forward<_Args>(__args)...);
+        }
     }
 
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept -> std::enable_if_t<std::is_same_v<std::remove_cv_t<_Tp>, std::string_view>, _Tp>
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<detail::is_bounded_array_v<_Tp>, std::array<std::remove_extent_t<std::remove_reference_t<_Tp>>, std::extent_v<std::remove_reference_t<_Tp>>>>
     {
-        std::size_t hashCode = typeHashCode();
+        using result_type = std::array<std::remove_extent_t<std::remove_reference_t<_Tp>>, std::extent_v<std::remove_reference_t<_Tp>>>;
 
-        if (typeid(std::string_view).hash_code() == hashCode)
-        {
-            return reference<std::string_view>();
-        }
-
-        /// std::string -> std::string_view
-        if (typeid(std::string).hash_code() == hashCode)
-        {
-            const std::string* ptr = pointer<std::string>();
-            return std::string_view(ptr->data(), ptr->size());
-        } else
-
-        /// const char* -> std::string_view
-        if (_M_valueTag == StringLiteralFlag)
-        {
-            return std::string_view(reference<const char*>(), _M_size);
-        } else
-
-        /// bool -> std::string_view
-        if (typeid(bool).hash_code() == hashCode)
-        {
-            return std::string_view(static_cast<bool>(_M_data._M_bytes[0]) ? "true" : "false");
-        } else
-
-        /// char or uchar -> std::string_view
-        if (typeid(char).hash_code() == hashCode ||
-            typeid(signed char).hash_code() == hashCode ||
-            typeid(unsigned char).hash_code() == hashCode)
-        {
-            return std::string_view(reinterpret_cast<const char*>(&_M_data._M_bytes[0]), 1);
-        }
-
-        _KWARGSVALUE_INCORRECT_CONVERSION_();
-        return std::string_view();
+        return value<result_type>(std::forward<_Args>(__args)...);
     }
 
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept -> std::enable_if_t<detail::is_char_v<_Tp>, _Tp>
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&...) const noexcept
+        -> std::enable_if_t<std::conjunction_v<
+            detail::is_insertable_container<_Tp>,
+            std::negation<std::disjunction<
+                detail::is_std_string<_Tp>,
+                detail::is_std_string_view<_Tp>>>>, std::remove_reference_t<_Tp>>
     {
-        std::size_t hashCode = typeHashCode();
+        using result_type = std::remove_reference_t<_Tp>;
 
-        if (typeid(_Tp).hash_code() == hashCode)
+        Type&& ty = type();
+
+        if (ty.isSameAs<result_type>())
         {
-            return static_cast<_Tp>(_M_data._M_bytes[0]);
-        } else
-
-        /// const char* -> char or uchar
-        if (_M_valueTag == StringLiteralFlag)
-        {
-            if (_M_size)
-                return static_cast<_Tp>(reference<const char*>()[0]);
-            else
-                return '\0';
-        } else
-
-        /// std::string -> char or uchar
-        if (typeid(std::string).hash_code() == hashCode)
-        {
-            const std::string* strptr = pointer<std::string>();
-
-            if (strptr->size())
-                return static_cast<_Tp>(strptr->front());
-            else
-                return '\0';
-        } else
-
-        /// std::string_view -> char or uchar
-        if (typeid(std::string_view).hash_code() == hashCode)
-        {
-            const std::string_view* strptr = pointer<std::string_view>();
-
-            if (strptr->size())
-                return static_cast<_Tp>(strptr->front());
-            else
-                return '\0';
+            return reference<result_type>();
         }
-
-        return static_cast<_Tp>(value<int>());
+        else
+        {
+            return _M_getInsertableContainer<result_type>(ty);
+        }
     }
 
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept -> std::enable_if_t<detail::is_integral_v<_Tp> && detail::not_v<detail::is_char_v<_Tp>>, _Tp>
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&...) const noexcept
+        -> std::enable_if_t<std::conjunction_v<
+            detail::is_iterable<_Tp>,
+            std::negation<std::disjunction<
+                std::is_array<std::remove_reference_t<_Tp>>,
+                detail::is_insertable_container<_Tp>,
+                detail::is_std_string<_Tp>,
+                detail::is_std_string_view<_Tp>>>>, std::remove_reference_t<_Tp>>
     {
-        std::size_t hashCode = typeHashCode();
+        using result_type = std::remove_reference_t<_Tp>;
 
-        if (typeid(detail::enum_underlying_type_t<detail::remove_reference_cv_t<_Tp>>).hash_code() == hashCode)
+        Type&& ty = type();
+
+        if (ty.isSameAs<result_type>())
         {
-            // return reference<_Tp>();
-
-            if (_M_valueTag == ValueFlag) _KWARGS_ATTRIBUTE_LIKELY
-                return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
-
-            else _KWARGS_ATTRIBUTE_UNLIKELY // if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
-                return *reinterpret_cast<const _Tp*>(_M_data._M_ptr);
-        } else
-
-        /// integer or floating point -> integer
-        if (int is; _M_manager(DoCheckInt | DoCheckReal | DoCheckSign, nullptr, &is), is)
-        {
-            if (is & DoCheckInt)
-            {
-                if (typeid(bool).hash_code() == hashCode)
-                {
-                    return static_cast<_Tp>(static_cast<bool>(_M_data._M_bytes[0]) ? 1 : 0);
-                }
-
-                if (is & DoCheckSign)
-                {
-                    if (_M_size == sizeof(std::int8_t))
-                        return static_cast<_Tp>(reference<std::int8_t>());
-
-                    else if (_M_size == sizeof(std::int16_t)) _KWARGS_ATTRIBUTE_UNLIKELY
-                        return static_cast<_Tp>(reference<std::int16_t>());
-
-                    else if (_M_size == sizeof(std::int32_t)) _KWARGS_ATTRIBUTE_LIKELY
-                        return static_cast<_Tp>(reference<std::int32_t>());
-
-                    else // if (_M_size == sizeof(std::int64_t))
-                        return static_cast<_Tp>(reference<std::int64_t>());
-                }
-                else
-                {
-                    return static_cast<_Tp>(reference<std::uint64_t>());
-                }
-            }
-            else // if (is & DoCheckReal)
-            {
-                if (_M_size == sizeof(float))
-                    return static_cast<_Tp>(reference<float>());
-
-                else if (_M_size == sizeof(double))
-                    return static_cast<_Tp>(reference<double>());
-
-                else // if (_M_size == sizeof(long double))
-                    return static_cast<_Tp>(reference<long double>());
-            }
-
-        } else
-
-        /// const char* -> integer
-        if (_M_valueTag == StringLiteralFlag)
-        {
-            if (reference<const char*>() == nullptr)
-                return static_cast<_Tp>(0);
-            else if (detail::is_same_char_ignore_case(reference<const char*>()[0], 't'))
-                return static_cast<_Tp>(true);
-            else if (detail::is_same_char_ignore_case(reference<const char*>()[0], 'f'))
-                return static_cast<_Tp>(false);
-
-
-            if constexpr (std::is_signed_v<detail::enum_underlying_type_t<_Tp>>)
-                return static_cast<_Tp>(
-                    detail::string_to_integer<std::int64_t>(reference<const char*>()));
-
-            else if constexpr (std::is_unsigned_v<detail::enum_underlying_type_t<_Tp>>)
-                return static_cast<_Tp>(
-                    detail::string_to_integer<std::uint64_t>(reference<const char*>()));
-        } else
-
-        /// std::string -> integer
-        if (typeid(std::string).hash_code() == hashCode)
-        {
-            if (detail::is_same_char_ignore_case((reference<std::string>()).front(), 't'))
-                return static_cast<_Tp>(true);
-            else if (detail::is_same_char_ignore_case((reference<std::string>()).front(), 'f'))
-                return static_cast<_Tp>(false);
-
-
-            if constexpr (std::is_signed_v<detail::enum_underlying_type_t<_Tp>>)
-                return static_cast<_Tp>(
-                    detail::string_to_integer<std::int64_t>(reference<std::string>()));
-
-            else if constexpr (std::is_unsigned_v<detail::enum_underlying_type_t<_Tp>>)
-                return static_cast<_Tp>(
-                    detail::string_to_integer<std::uint64_t>(reference<std::string>()));
-        } else
-
-        /// std::string_view -> integer
-        if (typeid(std::string_view).hash_code() == hashCode)
-        {
-            const std::string_view* sv = pointer<std::string_view>();
-            
-            if (sv->empty())
-            {
-                return static_cast<_Tp>(0);
-            }
-            else if (detail::is_same_char_ignore_case(sv->front(), 't'))
-            {
-                return static_cast<_Tp>(true);
-            }
-            else if (detail::is_same_char_ignore_case(sv->front(), 'f'))
-            {
-                return static_cast<_Tp>(false);
-            }
-            else
-            {
-                if constexpr (std::is_signed_v<detail::enum_underlying_type_t<_Tp>>)
-                    return static_cast<_Tp>(detail::string_to_integer<std::int64_t>(*sv));
-
-                else if constexpr (std::is_unsigned_v<detail::enum_underlying_type_t<_Tp>>)
-                    return static_cast<_Tp>(detail::string_to_integer<std::uint64_t>(*sv));
-            }
+            return reference<result_type>();
         }
-
-        _KWARGSVALUE_INCORRECT_CONVERSION_();
-        return _Tp();
+        else
+        {
+            return _M_getIterableContainer<result_type>(ty);
+        }
     }
 
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept -> std::enable_if_t<std::is_floating_point_v<_Tp>, _Tp>
+    template<typename _Tp, typename... _Args>
+    [[nodiscard]] constexpr auto value(_Args&&... __args) const noexcept
+        -> std::enable_if_t<
+            std::disjunction_v<
+                std::is_class<std::remove_reference_t<_Tp>>,
+                std::is_union<std::remove_reference_t<_Tp>>> &&
+            std::negation_v<std::disjunction<
+                detail::is_insertable_container<_Tp>,
+                detail::is_iterable<_Tp>,
+                detail::is_tuple_like<_Tp>>>, std::remove_reference_t<_Tp>>
     {
-        std::size_t hashCode = typeHashCode();
+        using result_type = std::remove_reference_t<_Tp>;
 
-        if (typeid(detail::remove_reference_cv_t<_Tp>).hash_code() == hashCode)
+        Type&& ty = type();
+
+        if (ty.isSameAs<result_type>())
         {
-            // return reference<_Tp>();
-
-            if (_M_valueTag == ValueFlag) _KWARGS_ATTRIBUTE_LIKELY
-                return *reinterpret_cast<const _Tp*>(&_M_data._M_value);
-            
-            else _KWARGS_ATTRIBUTE_UNLIKELY // if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
-                return *reinterpret_cast<const _Tp*>(_M_data._M_ptr);
+            return reference<result_type>();
         }
-
-        /// integer or floating point -> floating point
-        if (int is; _M_manager(DoCheckInt | DoCheckReal | DoCheckSign, nullptr, &is), is)
+        else
         {
-            if (is & DoCheckInt)
-            {
-                if (typeid(bool).hash_code() == hashCode)
-                {
-                    return static_cast<bool>(_M_data._M_bytes[0]) ? 1.00f : 0.00f;
-                }
-
-                if (is & DoCheckSign)
-                {
-                    if (_M_size == sizeof(std::int8_t))
-                        return static_cast<_Tp>(reference<std::int8_t>());
-
-                    else if (_M_size == sizeof(std::int16_t)) _KWARGS_ATTRIBUTE_UNLIKELY
-                        return static_cast<_Tp>(reference<std::int16_t>());
-
-                    else if (_M_size == sizeof(std::int32_t)) _KWARGS_ATTRIBUTE_LIKELY
-                        return static_cast<_Tp>(reference<std::int32_t>());
-
-                    else // if (_M_size == sizeof(std::int64_t))
-                        return static_cast<_Tp>(reference<std::int64_t>());
-                }
-                else
-                {
-                    return static_cast<_Tp>(reference<std::uint64_t>());
-                }
-            }
-            else // if (is & DoCheckReal)
-            {
-                if (_M_size == sizeof(float))
-                    return static_cast<_Tp>(reference<float>());
-
-                else if (_M_size == sizeof(double))
-                    return static_cast<_Tp>(reference<double>());
-
-                else // if (_M_size == sizeof(long double))
-                    return static_cast<_Tp>(reference<long double>());
-            }
-
-        } else
-
-        /// const char* -> floating point
-        if (_M_valueTag == StringLiteralFlag)
-        {
-            return static_cast<_Tp>(detail::string_to_floating_point<long double>(reference<const char*>()));
-        } else
-
-        /// std::string -> floating point
-        if (typeid(std::string).hash_code() == hashCode)
-        {
-            return static_cast<_Tp>(detail::string_to_floating_point<long double>(reference<std::string>()));
-        } else
-
-        /// std::string_view -> floating point
-        if (typeid(std::string_view).hash_code() == hashCode)
-        {
-            return static_cast<_Tp>(detail::string_to_floating_point<long double>(reference<std::string_view>()));
+            return result_type(std::forward<_Args>(__args)...);
         }
-
-        _KWARGSVALUE_INCORRECT_CONVERSION_();
-        return _Tp();
     }
-
-    template<typename _Tp>
-    [[nodiscard]] constexpr auto value() const noexcept
-            -> std::enable_if_t<
-                    (std::is_class_v<_Tp> || std::is_union_v<_Tp> || std::is_pointer_v<_Tp>) &&
-                    detail::not_v<detail::is_any_of_v<std::remove_cv_t<_Tp>, const char*, std::string, std::string_view>>, _Tp>
-    {
-        if constexpr (detail::has_container_value_type_v<_Tp> && detail::is_insertable_container_v<_Tp>)
-        {
-            if (!isSameType<_Tp>() && hasValueType() && isIterable())
-            {
-                if (typeid(detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>).hash_code() == valueTypeHashCode())
-                {
-                    return _M_iterateAndCopy<detail::remove_reference_cv_t<_Tp>>();
-                }
-                else
-                {
-                    return _M_iterateAnyAndCopy<detail::remove_reference_cv_t<_Tp>>();
-                }
-            }
-        }
-
-
-        if (_M_valueTag == PointerFlag || _M_valueTag == AppliedFlag)
-        {
-            return *reinterpret_cast<_Tp*>(_M_data._M_ptr);
-        }
-        else if (_M_valueTag == StringLiteralFlag)
-        {
-            return _S_fromStringLiteral<_Tp>(reinterpret_cast<const char*>(_M_data._M_ptr));
-        }
-        else if (_M_valueTag == ValueFlag)
-        {
-            assert(_M_size <= sizeof(_M_data) && "KwargsValue: Incorrect conversion.");
-
-            return *static_cast<const _Tp*>(reinterpret_cast<const void*>(&_M_data._M_value));
-        }
-
-        _KWARGSVALUE_INCORRECT_CONVERSION_();
-        return _Tp();
-    }
-
-    [[nodiscard]]
-    constexpr std::uint32_t size() const noexcept
-    { return _M_size; }
 
     constexpr KwargsValue& operator=(const KwargsValue& __other)
     {
-        if (_M_valueTag == AppliedFlag)
+        if (valueTag() == AppliedFlag)
         {
             _M_manager(DoFree, _M_data._M_ptr, nullptr);
         }
 
-        if (__other._M_valueTag == AppliedFlag)
+        if (__other.valueTag() == AppliedFlag)
+        {
             __other._M_manager(DoApplyAndCopy, __other._M_data._M_ptr, &_M_data._M_ptr);
+        }
         else
+        {
             _M_data._M_value = __other._M_data._M_value;
+        }
 
         _M_manager = __other._M_manager;
-        _M_valueTag = __other._M_valueTag;
-        _M_size = __other._M_size;
 
         return *this;
     }
 
     constexpr KwargsValue& operator=(KwargsValue&& __other) noexcept
     {
-        if (_M_valueTag == AppliedFlag)
+        if (valueTag() == AppliedFlag)
         {
             _M_manager(DoFree, _M_data._M_ptr, nullptr);
         }
 
         _M_data._M_value = __other._M_data._M_value;
 
-        _M_valueTag = detail::exchange(
-            __other._M_valueTag,
-            __other._M_valueTag == AppliedFlag ? PointerFlag : __other._M_valueTag);
-
-        _M_size = __other._M_size;
-
-        _M_manager = __other._M_manager;
+        _M_manager = detail::exchange(__other._M_manager, &KwargsValue::_S_manage<int>);
 
         return *this;
     }
 
+    constexpr void swap(KwargsValue& __other) noexcept
+    { detail::bit_swap(*this, __other); }
+
+    [[nodiscard]] constexpr bool operator==(const KwargsValue& __other) const noexcept
+    {
+        bool _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(result);
+
+        auto in_data = std::make_pair(this, &__other);
+        _M_manager(DoCompareEqual, &in_data, &result);
+
+        return result;
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] constexpr bool operator==(const _Tp& __other) const noexcept
+    { return value<_Tp>() == __other; }
+
 protected:
 
-    template<typename _Tp, typename = std::void_t<decltype(_Tp(std::declval<const char*>()))>>
-    [[nodiscard]]
-    static constexpr _Tp _S_fromStringLiteral(const char* __str) noexcept
-    { return _Tp(__str); }
-
     template<typename _Tp>
-    [[nodiscard]]
-    static constexpr _Tp _S_fromStringLiteral([[maybe_unused]] const char* __str) noexcept
-    { assert(false); return _Tp(); }
-
-    template<typename _Tp>
-    [[nodiscard]]
-    constexpr _Tp _M_iterateAndCopy() const noexcept
+    [[nodiscard]] constexpr _Tp _M_getInsertableContainer(const Type& __ty) const noexcept
     {
-        void* iterator;
-        _M_manager(DoGetBeginIterator, const_cast<void*>(reinterpret_cast<const void*>(this)), &iterator);
+        using type1 = detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>>;
+        using type2 = detail::remove_reference_cv_t<detail::dereferenced_iterator_t<detail::remove_reference_cv_t<_Tp>>>;
+
+        if (Type&& vty = __ty.valueType(); vty.isAnyOf<type1, type2>() ||
+            (detail::is_char_v<type1> && vty.isCharacter()) ||
+            (detail::is_char_pointer_v<_Tp> && vty.isCharacterPointer()) ||
+            (detail::is_std_string_v<_Tp> && vty.isStdString()) ||
+            (detail::is_std_string_view_v<_Tp> && vty.isStdStringView()))
+        {
+            return _M_copyToInsertableContainer<detail::remove_reference_cv_t<_Tp>>();
+        }
+        else
+        {
+            return _M_copyToInsertableContainerWithConversion<detail::remove_reference_cv_t<_Tp>>();
+        }
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] constexpr _Tp _M_getIterableContainer(const Type& __ty) const noexcept
+    {
+        using type1 = detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>>;
+        using type2 = detail::remove_reference_cv_t<detail::dereferenced_iterator_t<detail::remove_reference_cv_t<_Tp>>>;
+
+        if (Type&& vty = __ty.valueType(); vty.isAnyOf<type1, type2>() ||
+            (detail::is_char_v<type1> && vty.isCharacter()) ||
+            (detail::is_char_pointer_v<_Tp> && vty.isCharacterPointer()) ||
+            (detail::is_std_string_v<_Tp> && vty.isStdString()) ||
+            (detail::is_std_string_view_v<_Tp> && vty.isStdStringView()))
+        {
+            return _M_copyToIterableContainer<detail::remove_reference_cv_t<_Tp>>();
+        }
+        else
+        {
+            return _M_copyToIterableContainerWithConversion<detail::remove_reference_cv_t<_Tp>>();
+        }
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR _Tp _M_beginValue(const Type& __ty) const noexcept
+    {
+        if (Type&& vty = __ty.valueType(); vty.isSameAs<_Tp>() ||
+            (detail::is_char_v<_Tp> && vty.isCharacter()) ||
+            (detail::is_char_pointer_v<_Tp> && vty.isCharacterPointer()) ||
+            (detail::is_std_string_v<_Tp> && vty.isStdString()) ||
+            (detail::is_std_string_view_v<_Tp> && vty.isStdStringView()))
+        {
+            _Tp result{};
+            _M_manager(DoGetBeginValue, detail::as_non_cv(this), &result);
+            return result;
+        }
+        else
+        {
+            KwargsValue result;
+            _M_manager(DoGetBeginAnyValue, detail::as_non_cv(this), &result);
+            return result;
+        }
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] constexpr _Tp _M_copyToInsertableContainer() const noexcept
+    {
+        static_assert(std::negation_v<std::is_reference<_Tp>> && detail::is_insertable_container_v<_Tp>);
+
+        void* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(iterator);
+        _M_manager(DoGetBeginIterator, detail::as_non_cv(this), &iterator);
 
         _Tp result{};
         std::pair<const KwargsValue*, void**> param;
 
-        detail::container_value_type_t<_Tp> element{ };
+        std::conditional_t<
+            std::is_default_constructible_v<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>>,
+            detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>,
+            detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>>
+        > element{};
+
         _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element);
 
 
         for (; iterator; _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element))
         {
 #if defined(_MSC_VER)
-#   pragma warning(push)
-#   pragma warning(disable: 26800)  // C26800: Use of a moved from object: 'object'.
+#   pragma warning (push)
+#   pragma warning (disable: 26800)  // C26800: Use of a moved from object: 'object'.
 #endif
             detail::container_insert(result, std::move(element));
 #if defined(_MSC_VER)
-#   pragma warning(pop)
+#   pragma warning (pop)
 #endif
         }
 
@@ -2342,11 +4168,12 @@ protected:
     }
 
     template<typename _Tp>
-    [[nodiscard]]
-    constexpr _Tp _M_iterateAnyAndCopy() const noexcept
+    [[nodiscard]] _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR _Tp _M_copyToInsertableContainerWithConversion() const noexcept
     {
-        void* iterator;
-        _M_manager(DoGetBeginIterator, const_cast<void*>(reinterpret_cast<const void*>(this)), &iterator);
+        static_assert(std::negation_v<std::is_reference<_Tp>>&& detail::is_insertable_container_v<_Tp>);
+
+        void* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(iterator);
+        _M_manager(DoGetBeginIterator, detail::as_non_cv(this), &iterator);
 
         _Tp result{};
         std::pair<const KwargsValue*, void**> param;
@@ -2357,7 +4184,94 @@ protected:
 
         for (; iterator; _M_manager(DoIterateAny, &(param = std::make_pair(this, &iterator)), &element))
         {
-            detail::container_insert(result, element.value<detail::container_value_type_t<_Tp>>());
+            using type = std::conditional_t<
+                std::is_default_constructible_v<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>>,
+                detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>,
+                detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>>>;
+
+            detail::container_insert(result, element.value<type>());
+        }
+
+        return result;
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] constexpr _Tp _M_copyToIterableContainer() const noexcept
+    {
+        static_assert(std::negation_v<std::is_reference<_Tp>> && detail::is_iterable_v<_Tp>);
+
+        void* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(iterator);
+        _M_manager(DoGetBeginIterator, detail::as_non_cv(this), &iterator);
+
+        _Tp result{};
+
+        auto it = detail::container_begin_iterator(result);
+        auto last = detail::container_end_iterator(result);
+
+        std::pair<const KwargsValue*, void**> param;
+
+        std::conditional_t<
+            std::is_default_constructible_v<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>>,
+            detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>,
+            detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>>
+        > element{};
+
+        _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element);
+
+        for (; iterator; _M_manager(DoIterate, &(param = std::make_pair(this, &iterator)), &element), ++it)
+        {
+            if (it == last)
+            {
+                _M_manager(DoEndIteration, iterator, nullptr);
+                break;
+            }
+
+#if defined(_MSC_VER)
+#   pragma warning (push)
+#   pragma warning (disable: 26800)  // C26800: Use of a moved from object: 'object'.
+#endif
+            *it = std::move(element);
+#if defined(_MSC_VER)
+#   pragma warning (pop)
+#endif
+        }
+
+        return result;
+    }
+
+    template<typename _Tp>
+    [[nodiscard]] _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR _Tp _M_copyToIterableContainerWithConversion() const noexcept
+    {
+        static_assert(std::negation_v<std::is_reference<_Tp>>&& detail::is_iterable_v<_Tp>);
+
+        void* _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR(iterator);
+        _M_manager(DoGetBeginIterator, detail::as_non_cv(this), &iterator);
+
+        _Tp result{};
+
+        auto it = detail::container_begin_iterator(result);
+        auto last = detail::container_end_iterator(result);
+
+        std::pair<const KwargsValue*, void**> param;
+
+        KwargsValue element;
+
+        _M_manager(DoIterateAny, &(param = std::make_pair(this, &iterator)), &element);
+
+        for (; iterator; _M_manager(DoIterateAny, &(param = std::make_pair(this, &iterator)), &element), ++it)
+        {
+            if (it == last)
+            {
+                _M_manager(DoEndIteration, iterator, nullptr);
+                break;
+            }
+
+            using type = std::conditional_t<
+                std::is_default_constructible_v<detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>>,
+                detail::remove_reference_cv_t<detail::dereferenced_iterator_t<_Tp>>,
+                detail::remove_reference_cv_t<detail::container_value_type_t<detail::remove_reference_cv_t<_Tp>>>>;
+
+            *it = element.value<type>();
         }
 
         return result;
@@ -2376,22 +4290,10 @@ private:
     } _M_data;
 
     void (*_M_manager)(WorkFlags, void*, void*) = &_S_manage<int>;
-
-    enum ValueTag : std::uint32_t
-    {
-        PointerFlag = 0,
-        StringLiteralFlag,
-        ValueFlag,
-        AppliedFlag
-    };
-
-    ValueTag _M_valueTag = ValueFlag;
-
-    std::uint32_t _M_size = 0;
 };
 
-
-#undef _KWARGSVALUE_INCORRECT_CONVERSION_
+constexpr void swap(KwargsValue& __left, KwargsValue& __right) noexcept
+{ __left.swap(__right); }
 
 
 class Args
@@ -2497,7 +4399,7 @@ private:
 };
 
 
-template<KwargsKey::value_type... _OptionalList>
+template<KwargsKey::ValueType... _OptionalList>
 class Kwargs
 {
 public:
@@ -2515,17 +4417,17 @@ public:
         { }
 
         template<typename _ValueType, typename... _Args>
-        [[nodiscard]]
-        constexpr _ValueType valueOr(_Args&&... __args) const noexcept
-        { return _M_that ? _M_that->value<_ValueType>() : _ValueType(std::forward<_Args>(__args)...); }
+        [[nodiscard]] constexpr _ValueType valueOr(_Args&&... __args) const noexcept
+        { return _M_that ? _M_that->value<_ValueType>(std::forward<_Args>(__args)...) : _ValueType(std::forward<_Args>(__args)...); }
 
-        [[nodiscard]]
-        constexpr bool hasValue() const noexcept
+        [[nodiscard]] constexpr bool hasValue() const noexcept
         { return static_cast<bool>(_M_that); }
 
-        [[nodiscard]]
-        constexpr const KwargsValue* operator->() const noexcept
+        [[nodiscard]] constexpr const KwargsValue* operator->() const noexcept
         { return _M_that; }
+
+        [[nodiscard]] constexpr const KwargsValue& operator*() const noexcept
+        { return *_M_that; }
 
     private:
 
@@ -2535,8 +4437,7 @@ public:
     constexpr Kwargs(container_type __list) noexcept
         : _M_data(__list)
     {
-        /// If _OptionalList is not empty then check
-        /// whether all keys are in _OptionalList
+        // If _OptionalList is not empty then check whether all keys are in _OptionalList
         if constexpr (sizeof...(_OptionalList) != 0)
         {
             for (const auto& i : __list)
@@ -2548,7 +4449,7 @@ public:
             }
         }
 
-        /// Check for duplicate keys
+        // Check for duplicate keys
         assert([&]() constexpr noexcept -> bool
         {
             if (__list.size())
@@ -2569,8 +4470,7 @@ public:
         }());
     }
 
-    [[nodiscard]]
-    constexpr DataItem operator[](KwargsKey __option) noexcept
+    [[nodiscard]] constexpr DataItem operator[](KwargsKey __option) noexcept
     {
         for (const auto& i : _M_data)
         {
@@ -2584,8 +4484,7 @@ public:
     }
 
     template<std::size_t _Size>
-    [[nodiscard]]
-    constexpr DataItem operator[](const std::array<KwargsKey, _Size>& __options) noexcept
+    [[nodiscard]] constexpr DataItem operator[](const std::array<KwargsKey, _Size>& __options) noexcept
     {
         for (KwargsKey key : __options)
         {
@@ -2600,28 +4499,23 @@ public:
         return DataItem(nullptr);
     }
 
-    [[nodiscard]]
-    constexpr const_iterator begin() const noexcept
+    [[nodiscard]] constexpr const_iterator begin() const noexcept
     { return _M_data.begin(); }
 
-    [[nodiscard]]
-    constexpr const_iterator end() const noexcept
+    [[nodiscard]] constexpr const_iterator end() const noexcept
     { return _M_data.end(); }
 
-    [[nodiscard]]
-    constexpr std::size_t size() const noexcept
+    [[nodiscard]] constexpr std::size_t size() const noexcept
     { return _M_data.size(); }
 
 protected:
 
-    template<KwargsKey::value_type _Current>
-    [[nodiscard]]
-    constexpr bool _M_contains(KwargsKey __option) const noexcept
+    template<KwargsKey::ValueType _Current>
+    [[nodiscard]] constexpr bool _M_contains(KwargsKey __option) const noexcept
     { return __option == KwargsKey(_Current); }
 
-    template<KwargsKey::value_type _Current, KwargsKey::value_type _Next, KwargsKey::value_type... _Args>
-    [[nodiscard]]
-    constexpr bool _M_contains(KwargsKey __option) const noexcept
+    template<KwargsKey::ValueType _Current, KwargsKey::ValueType _Next, KwargsKey::ValueType... _Args>
+    [[nodiscard]] constexpr bool _M_contains(KwargsKey __option) const noexcept
     { return __option == KwargsKey(_Current) || _M_contains<_Next, _Args...>(__option); }
 
 private:
@@ -2636,26 +4530,20 @@ public:
 
     using value_type = detail::string_hash_type;
 
-    constexpr KwargsKeyLiteral(value_type __value)
+    constexpr KwargsKeyLiteral(value_type __value) noexcept
         : _M_value(__value)
     { }
 
     [[nodiscard]] constexpr value_type value() const noexcept
-    {
-        return _M_value;
-    }
+    { return _M_value; }
 
     [[nodiscard]] constexpr operator value_type() const noexcept
-    {
-        return value();
-    }
+    { return value(); }
 
     
     /// @note KwargsValue has a custom destructor. In C++17 and below, the destructor cannot be declared constexpr.
     [[nodiscard]] _KWARGS_DESTRUCTOR_CONSTEXPR Kwargs<>::value_type operator=(KwargsValue&& __value) const noexcept
-    {
-        return { KwargsKey(value()), std::move(__value) };
-    }
+    { return { KwargsKey(value()), std::move(__value) }; }
 
 
     /// @brief Multiple KwargsKeys can be joined using the `or` operator.
@@ -2677,7 +4565,7 @@ constexpr KwargsKey::KwargsKey(const KwargsKeyLiteral& __literal) noexcept : _M_
 
 #if defined(_MSC_VER)
 #   pragma warning (pop)
-#elif defined(__GNUC__)
+#elif defined(__GNUC__) || defined(__clang__)
 #   pragma GCC diagnostic pop
 #endif
 
@@ -2685,7 +4573,7 @@ constexpr KwargsKey::KwargsKey(const KwargsKeyLiteral& __literal) noexcept : _M_
 inline namespace literals
 {
 
-#if defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+#if defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE)
 #   if defined(_MSC_VER)
 #       pragma warning (disable: 4455)                    // C4455: literal suffix identifiers that do not start with an underscore are reserved
 #   elif defined(__GNUC__) || defined(__clang__)
@@ -2694,11 +4582,11 @@ inline namespace literals
 #endif
 
 [[nodiscard]] constexpr auto
-#if    defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE) && defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+#if    defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE) && defined(KWARGS_USE_SHORT_LITERAL_SUFFIX)
     operator""o
-#elif  defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+#elif  defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE)
     operator""opt
-#elif  defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+#elif  defined(KWARGS_USE_SHORT_LITERAL_SUFFIX)
     operator""_o
 #else
     operator""_opt
@@ -2709,11 +4597,11 @@ inline namespace literals
 
 template<char... _String>
 [[nodiscard]] constexpr auto
-#if    defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE) && defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+#if    defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE) && defined(KWARGS_USE_SHORT_LITERAL_SUFFIX)
     operator""o
-#elif  defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+#elif  defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE)
     operator""opt
-#elif  defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+#elif  defined(KWARGS_USE_SHORT_LITERAL_SUFFIX)
     operator""_o
 #else
     operator""_opt
@@ -2723,11 +4611,11 @@ template<char... _String>
 
 
 [[nodiscard]] constexpr auto
-#if    defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE) && defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+#if    defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE) && defined(KWARGS_USE_SHORT_LITERAL_SUFFIX)
     operator""o
-#elif  defined(KWARGSKEY_LITERAL_SUFFIX_WITHOUT_LEADING_UNDERSCORE)
+#elif  defined(KWARGS_USE_LITERAL_SUFFIX_NO_UNDERSCORE)
     operator""opt
-#elif  defined(KWARGSKEY_LITERAL_SHORT_SUFFIX)
+#elif  defined(KWARGS_USE_SHORT_LITERAL_SUFFIX)
     operator""_o
 #else
     operator""_opt
@@ -2739,14 +4627,20 @@ template<char... _String>
 }  // namespace literals
 
 
+#undef _KWARGS_HAS_CXX20
+
 #undef _KWARGS_DESTRUCTOR_CONSTEXPR
+#undef _KWARGS_NON_LITERAL_FUNCTION_CONSTEXPR
 #undef _KWARGS_VARIABLE_OPTIONAL_INITIALIZATION_CONSTEXPR
 
 #undef _KWARGS_ATTRIBUTE_LIKELY
 #undef _KWARGS_ATTRIBUTE_UNLIKELY
 
+#undef __kwargs_detail
+
 }  // namespace kwargs
 
+}  // extern "C++"
 
 // --- Export ---
 
