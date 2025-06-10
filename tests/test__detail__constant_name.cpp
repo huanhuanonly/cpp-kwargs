@@ -1,35 +1,22 @@
-#include <kwargs.h>
+#include "test.h"
 
 int main()
 {
-    if (auto res = kwargs::detail::constant_name<1>(); res != "1" and res != "0x1")
-    {
-        return 1;
-    }
+    test (auto res = kwargs::detail::constant_name<1>()) expect (res == "1" or res == "0x1");
 
-    if (auto res = kwargs::detail::constant_name<0.25>(); res.substr(0, 4) != "0.25")
-    {
-        return 2;
-    }
+#if defined(__cpp_nontype_template_args) && __cpp_nontype_template_args >= 201911L
+    test (auto res = kwargs::detail::constant_name<0.25>()) expect (res.substr(0, 4) == "0.25");
+#endif
 
-    if (auto res = kwargs::detail::constant_name<' '>(); res != " " and res != "0x20")
-    {
-        return 3;
-    }
+    test (auto res = kwargs::detail::constant_name<' '>()) expect (res == " " or res == "0x20");
 
     enum Enum { A, B, C };
 
-    if (auto res = kwargs::detail::constant_name<C>(); res != "Enum::C" and res != "main::C")
-    {
-        return 4;
-    }
+    test (auto res = kwargs::detail::constant_name<C>()) expect (res == "Enum::C" or res == "main::C");
 
     enum class ClassEnum { A, B, C };
 
-    if (auto res = kwargs::detail::constant_name<ClassEnum::A>(); res != "ClassEnum::A" and res != "main::ClassEnum::A")
-    {
-        return 5;
-    }
+    test (auto res = kwargs::detail::constant_name<ClassEnum::A>()) expect (res == "ClassEnum::A" or res == "main::ClassEnum::A");
 
-    return 0;
+    return testing_completed;
 }

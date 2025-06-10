@@ -19,7 +19,7 @@
 
 message (STATUS "cpp-kwargs: ${CMAKE_CXX_COMPILER_ID}")
 
-set (CMAKE_CXX_STANDARD 20)
+set (CMAKE_CXX_STANDARD 17)
 
 if (CMAKE_CXX_STANDARD LESS 17)
     message (FATAL_ERROR "cpp-kwargs: c++17 or newer is required")
@@ -31,18 +31,24 @@ if (MSVC AND CMAKE_CXX_STANDARD LESS 20)
     add_compile_definitions (or=||)
 endif()
 
-if (MSVC)
-    add_compile_options(/Wall /permissive- /Zc:preprocessor)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_compile_options (/Wall /permissive-)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options (-Wall)
 endif()
 
-add_executable (cpp-kwargs-test "test.cpp")
+if (MSVC AND MSVC_VERSION GREATER_EQUAL 1926)
+    add_compile_options (/Zc:preprocessor)
+endif()
 
-
+file (GLOB test_impl "test_h_impl.cpp")
 file (GLOB test_sources "test__*.cpp")
+
+add_executable (cpp-kwargs-test ${test_impl} "test.cpp")
 
 foreach (test_src ${test_sources})
     get_filename_component (test_name ${test_src} NAME_WE)
-    add_executable (${test_name} ${test_src})
+    add_executable (${test_name} ${test_impl} ${test_src})
     add_test (NAME ${test_name} COMMAND ${test_name})
     set_tests_properties (${test_name} PROPERTIES TIMEOUT 3)
 endforeach()

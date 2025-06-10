@@ -1,20 +1,14 @@
-#include <kwargs.h>
+#include "test.h"
 
 int main()
 {
     enum Enum { A, B, C };
 
-    if (auto res = kwargs::detail::enum_name<C>(); res != "C")
-    {
-        return 1;
-    }
+    test (auto res = kwargs::detail::enum_name<C>()) expect (res == "C");
 
     enum class ClassEnum { A, B, C };
 
-    if (auto res = kwargs::detail::enum_name<ClassEnum::A>(); res != "A")
-    {
-        return 2;
-    }
+    test (auto res = kwargs::detail::enum_name<ClassEnum::A>()) expect (res == "A");
 
-    return 0;
+    return testing_completed;
 }

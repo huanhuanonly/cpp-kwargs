@@ -25,20 +25,15 @@
 */
 
 #if defined(_MSC_VER)
-#   pragma warning (disable : 4866)  // 'file(line_number)' compiler may not enforce left-to-right evaluation order for call to operator_name
-#   pragma warning (disable : 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+#   pragma warning (disable: 4866)  // 'file(line_number)' compiler may not enforce left-to-right evaluation order for call to operator_name
+#   pragma warning (disable: 5045)  // C5045: Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 
-#   pragma warning (disable : 4710)  // C4710: 'function' : function not inlined
-#   pragma warning (disable : 4711)  // C4711: function 'function' selected for inline expansion
+#   pragma warning (disable: 4710)  // C4710: 'function' : function not inlined
+#   pragma warning (disable: 4711)  // C4711: function 'function' selected for inline expansion
 #endif
 
-#if __has_include(<kwargs.h>)
-#   include <kwargs.h>
-#else
-#   include "../include/kwargs.h"
-#endif
+#include "test.h"
 
-#include <iostream>
 #include <iomanip>
 #include <vector>
 #include <set>
@@ -48,31 +43,13 @@
 struct _Test
 {
     _Test(const char* const __funcName)
-    { std::cout << __funcName << "():\n+++\n"; }
+    { std::cout << __funcName << std::string_view("():\n+++\n"); }
 
     ~_Test()
-    { std::cout << "\n---\n\n"; }
+    { std::cout << std::string_view("\n---\n\n"); }
 };
 
 #define _Test_Begin_  _Test _l_test(__func__);
-
-
-template<typename _Container>
-auto operator<<(std::ostream& __os, const _Container& __c)
-    -> std::enable_if_t<
-        kwargs::detail::is_iterable_container_v<_Container> &&
-        kwargs::detail::not_v<kwargs::detail::is_any_of_v<_Container, std::string, std::string_view>>, std::ostream&>
-{
-    __os.put('[');
-    for (const auto& value : __c)
-    {
-        __os << value << ", ";
-    }
-    __os.put(']');
-
-    return __os;
-}
-
 
 static void _test_general(Kwargs<"name"_opt, "data"_opt, "old"_opt, "class"_opt, 2024_opt> __dict)
 {
@@ -286,17 +263,6 @@ static void _test_to_enum(Kwargs<"enum"_opt> kwargs)
     std::cout << static_cast<std::underlying_type_t<Enum>>(kwargs["enum"_opt].valueOr<Enum>()) << '\n';
 }
 
-static void _test_kwargsvalue_typename()
-{
-    _Test_Begin_
-
-    std::cout << KwargsValue(1).typeName() << '\n';
-    std::cout << KwargsValue(1ull).typeName() << '\n';
-    std::cout << KwargsValue("abc").typeName() << '\n';
-    std::cout << KwargsValue(std::string("abc")).typeName() << '\n';
-    std::cout << KwargsValue(std::set<int>{1}).typeName() << '\n';
-}
-
 int main(void)
 {
     std::ios::sync_with_stdio(false);
@@ -347,8 +313,6 @@ int main(void)
 
     _test_general({ {"name"_opt, Enum::EnumC}, {"old"_opt, Enum::EnumB} });
     _test_to_enum({ {"enum", 1} });
-
-    _test_kwargsvalue_typename();
 
     return 0;
 }

@@ -1,41 +1,20 @@
-#include <kwargs.h>
+#include "test.h"
 
 int main()
 {
-    if (kwargs::detail::type_name<int>() != "int")
-    {
-        return 1;
-    }
+    test () expect (kwargs::detail::type_name<int>() == "int");
 
-    if (kwargs::detail::type_name<unsigned int>() != "unsigned int")
-    {
-        return 2;
-    }
+    test () expect  (kwargs::detail::type_name<unsigned int>() == "unsigned int");
 
-    if (kwargs::detail::type_name<float>() != "float")
-    {
-        return 3;
-    }
+    test () expect (kwargs::detail::type_name<float>() == "float");
 
-    if (kwargs::detail::type_name<double>() != "double")
-    {
-        return 4;
-    }
+    test () expect (kwargs::detail::type_name<double>() == "double");
 
-    if (kwargs::detail::type_name<long double>() != "long double")
-    {
-        return 5;
-    }
+    test () expect (kwargs::detail::type_name<long double>() == "long double");
 
-    if (kwargs::detail::type_name<const char*>() != "const char*")
-    {
-        return 6;
-    }
+    test () expect (kwargs::detail::type_name<const char*>() == "const char*");
 
-    if (kwargs::detail::type_name<int&>() != "int&")
-    {
-        return 7;
-    }
+    test () expect (kwargs::detail::type_name<int&>() == "int&");
 
-    return 0;
+    return testing_completed;
 }
